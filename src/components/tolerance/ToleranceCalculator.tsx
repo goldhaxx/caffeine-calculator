@@ -38,7 +38,7 @@ export function ToleranceCalculator({
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 ml-1.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="w-64 p-3 border-white/20 glass-panel">
+              <TooltipContent className="w-64 p-3 border-white/20 glass-panel text-white">
                 <p className="text-sm">Enter the total amount of caffeine you typically consume in a 24-hour period.</p>
               </TooltipContent>
             </Tooltip>
@@ -59,7 +59,7 @@ export function ToleranceCalculator({
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 ml-1.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="w-80 p-4 border-white/20 glass-panel">
+              <TooltipContent className="w-80 p-4 border-white/20 glass-panel text-white">
                 <p className="text-sm mb-2"><strong className="text-primary">Taper Down:</strong> Gradually reduce your caffeine intake by 25% every 10 days to minimize withdrawal symptoms.</p>
                 <p className="text-sm"><strong className="text-primary">Cold Turkey:</strong> Stop completely. Uncomfortable withdrawal for a few days, but resets adenosine receptors faster (~14 days).</p>
               </TooltipContent>
