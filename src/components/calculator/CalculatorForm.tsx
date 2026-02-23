@@ -80,31 +80,31 @@ export function CalculatorForm({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="flex items-end gap-3 bg-white/5 p-3 rounded-lg border border-white/10"
+                  className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3 bg-white/5 p-3 rounded-lg border border-white/10"
                 >
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-[100px] space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Time</label>
                     <Input
                       type="time"
                       value={cons.time}
                       onChange={(e) => updateConsumption(cons.id, 'time', e.target.value)}
-                      className="bg-transparent border-white/20 focus-visible:ring-primary"
+                      className="bg-transparent border-white/20 focus-visible:ring-primary w-full"
                     />
                   </div>
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-[100px] space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Amount (mg)</label>
                     <Input
                       type="number"
                       value={cons.mg}
                       onChange={(e) => updateConsumption(cons.id, 'mg', Number(e.target.value))}
-                      className="bg-transparent border-white/20 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="bg-transparent border-white/20 focus-visible:ring-primary w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => removeConsumption(cons.id)}
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/20 h-10 w-10 shrink-0"
+                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/20 h-10 w-10 shrink-0 sm:mt-0 mt-5"
                     disabled={consumptions.length === 1}
                   >
                     <X className="h-4 w-4" />

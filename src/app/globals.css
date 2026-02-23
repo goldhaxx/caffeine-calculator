@@ -43,14 +43,17 @@
     from {
       height: 0;
     }
+
     to {
       height: var(--radix-accordion-content-height);
     }
   }
+
   @keyframes accordion-up {
     from {
       height: var(--radix-accordion-content-height);
     }
+
     to {
       height: 0;
     }
@@ -66,6 +69,7 @@
   color utility to any element that depends on these defaults.
 */
 @layer base {
+
   *,
   ::after,
   ::before,
@@ -127,6 +131,12 @@
   * {
     @apply border-border;
   }
+
+  html,
+  body {
+    @apply overflow-x-hidden w-full;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased selection:bg-primary/30;
     background-image: radial-gradient(circle at 15% 50%, rgba(120, 80, 255, 0.05), transparent 25%),

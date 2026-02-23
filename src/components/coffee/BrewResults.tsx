@@ -52,7 +52,7 @@ export function BrewResults({ caffeineMg }: BrewResultsProps) {
         </Card>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card className="glass-panel border-white/10 p-4 text-center">
             <p className="text-3xl font-bold text-blue-400">{redBulls}x</p>

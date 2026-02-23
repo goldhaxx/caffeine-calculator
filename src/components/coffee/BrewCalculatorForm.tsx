@@ -126,7 +126,7 @@ export function BrewCalculatorForm({ params, setParams }: BrewCalculatorFormProp
         </div>
 
         {/* Roast level */}
-        <div className="grid grid-cols-2 gap-4 pb-4 border-b border-white/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4 border-b border-white/10">
           <div className="space-y-1.5">
             <label className="text-sm font-medium flex items-center">
               Roast Level
@@ -183,7 +183,7 @@ export function BrewCalculatorForm({ params, setParams }: BrewCalculatorFormProp
             </Select>
           </div>
 
-          <div className={`grid gap-4 transition-all duration-300 ${params.brewMethod === 'cold_brew' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <div className={`grid gap-4 transition-all duration-300 ${params.brewMethod === 'cold_brew' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
             {params.brewMethod !== 'cold_brew' && (
               <div className="space-y-1.5 animate-in fade-in zoom-in-95 duration-300">
                 <div className="flex justify-between items-center">

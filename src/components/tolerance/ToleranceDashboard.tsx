@@ -12,7 +12,7 @@ interface ToleranceDashboardProps {
 export function ToleranceDashboard({ plan }: ToleranceDashboardProps) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card className="glass-panel border-white/10 h-full">
             <CardContent className="pt-6 flex items-center justify-between">

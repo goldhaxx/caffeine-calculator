@@ -44,7 +44,7 @@ export function Header() {
             <Link 
               key={link.href} 
               href={link.href}
-              className="relative px-4 py-2 rounded-full overflow-hidden"
+              className="relative px-3 sm:px-4 py-1.5 sm:py-2 rounded-full overflow-hidden"
             >
               {/* Background pill selector */}
               {isActive && (
@@ -56,7 +56,7 @@ export function Header() {
               )}
               
               <div className={cn(
-                "relative flex items-center gap-2 text-sm font-medium z-10 transition-colors duration-300",
+                "relative flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium z-10 transition-colors duration-300",
                 isActive ? link.color : "text-white/60 hover:text-white"
               )}>
                 <Icon className="w-4 h-4" />
