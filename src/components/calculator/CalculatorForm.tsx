@@ -8,6 +8,7 @@ import { Consumption, MetabolismType, METABOLISM_HALF_LIVES } from '@/lib/caffei
 import { Plus, X, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
+import { DrinkAssistantDialog } from './DrinkAssistantDialog';
 
 interface CalculatorFormProps {
   consumptions: Consumption[];
@@ -56,9 +57,19 @@ export function CalculatorForm({
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-sm font-semibold tracking-wide text-foreground/80 uppercase">Consumptions</h3>
-            <Button size="sm" variant="outline" onClick={addConsumption} className="rounded-full h-8 px-3 border-white/20 hover:bg-white/10">
-              <Plus className="h-4 w-4 mr-1" /> Add
-            </Button>
+            <div className="flex items-center gap-2">
+              <DrinkAssistantDialog 
+                onAdd={(mg) => {
+                  setConsumptions([
+                    ...consumptions,
+                    { id: Date.now().toString(), time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }), mg },
+                  ]);
+                }} 
+              />
+              <Button size="sm" variant="outline" onClick={addConsumption} className="rounded-full h-8 px-3 border-white/20 hover:bg-white/10">
+                <Plus className="h-4 w-4 mr-1" /> Add
+              </Button>
+            </div>
           </div>
           
           <AnimatePresence>
