@@ -77,7 +77,7 @@ export function DrinkAssistantDialog({ onAdd }: DrinkAssistantDialogProps) {
               <Coffee className="w-4 h-4 text-pink-400" />
               1. What are you drinking?
             </label>
-            <Popover open={comboOpen} onOpenChange={setComboOpen}>
+            <Popover open={comboOpen} onOpenChange={setComboOpen} modal={true}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
