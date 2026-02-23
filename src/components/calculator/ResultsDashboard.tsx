@@ -120,7 +120,17 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                     dataKey="timeStr" 
                     stroke="rgba(255,255,255,0.5)" 
                     fontSize={12}
-                    tickFormatter={(val, i) => i % 4 === 0 ? formatTime12h(val) : ''} // show every 2 hours (since 30m steps)
+                    interval={0}
+                    tickLine={false}
+                    tickFormatter={(val) => {
+                      const [hStr, mStr] = String(val).split(':');
+                      if (!hStr || !mStr) return '';
+                      const h = parseInt(hStr, 10);
+                      if (mStr === '00' && h % 4 === 0) {
+                        return `${h % 12 || 12}${h >= 12 ? 'PM' : 'AM'}`;
+                      }
+                      return '';
+                    }}
                   />
                   <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
                   <Tooltip 

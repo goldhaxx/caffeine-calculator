@@ -122,6 +122,8 @@ export function generateDecayChartData(consumptions: Consumption[], halfLife: nu
     });
 
     const startDt = timeToDate(earliestCons.time, baseDate);
+    startDt.setMinutes(0, 0, 0);
+
     const data = [];
 
     for (let i = 0; i <= 24 * 2; i++) { // 24 hours, 30 min steps

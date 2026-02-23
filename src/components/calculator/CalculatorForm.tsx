@@ -82,7 +82,7 @@ export function CalculatorForm({
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3 bg-white/5 p-3 rounded-lg border border-white/10"
                 >
-                  <div className="flex-1 min-w-[100px] space-y-1.5">
+                  <div className="flex-[1.5] min-w-[120px] space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Time</label>
                     <Input
                       type="time"
@@ -91,7 +91,7 @@ export function CalculatorForm({
                       className="bg-transparent border-white/20 focus-visible:ring-primary w-full"
                     />
                   </div>
-                  <div className="flex-1 min-w-[100px] space-y-1.5">
+                  <div className="flex-1 min-w-[80px] space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Amount (mg)</label>
                     <Input
                       type="number"

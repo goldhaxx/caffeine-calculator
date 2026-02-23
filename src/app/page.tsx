@@ -78,7 +78,7 @@ export default function Home() {
         {/* Main Application Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
           {/* Left Column: Inputs */}
-          <div className="lg:col-span-4 space-y-6">
+          <div className="lg:col-span-5 space-y-6">
             <CalculatorForm 
               consumptions={consumptions}
               setConsumptions={setConsumptions}
@@ -90,7 +90,7 @@ export default function Home() {
           </div>
 
           {/* Right Column: Dashboard & Chart */}
-          <div className="lg:col-span-8">
+          <div className="lg:col-span-7">
             <ResultsDashboard 
               consumptions={consumptions}
               bedtime={bedtime}
