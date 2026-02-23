@@ -9,6 +9,16 @@ const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' });
 export const metadata: Metadata = {
   title: 'Caffeine Sleep Safety Calculator',
   description: 'Calculate how long caffeine stays in your system and optimize your sleep schedule.',
+  openGraph: {
+    title: 'Caffeine Sleep Safety Calculator',
+    description: 'Calculate how long caffeine stays in your system and optimize your sleep schedule.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Caffeine Sleep Safety Calculator',
+    description: 'Calculate how long caffeine stays in your system and optimize your sleep schedule.',
+  },
 };
 
 export default function RootLayout({
