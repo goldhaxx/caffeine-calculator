@@ -55,9 +55,9 @@ export function CalculatorForm({
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-4">
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <h3 className="text-sm font-semibold tracking-wide text-foreground/80 uppercase">Consumptions</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <DrinkAssistantDialog 
                 onAdd={(mg) => {
                   setConsumptions([
@@ -66,53 +66,53 @@ export function CalculatorForm({
                   ]);
                 }} 
               />
-              <Button size="sm" variant="outline" onClick={addConsumption} className="rounded-full h-8 px-3 border-white/20 hover:bg-white/10">
+              <Button size="sm" variant="outline" onClick={addConsumption} className="rounded-full h-8 px-3 border-white/20 hover:bg-white/10 shrink-0">
                 <Plus className="h-4 w-4 mr-1" /> Add
               </Button>
             </div>
           </div>
           
-          <AnimatePresence>
-            {consumptions.map((cons, idx) => (
-              <motion.div
-                key={cons.id}
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/10"
-              >
-                <div className="flex-1 space-y-1">
-                  <label className="text-xs text-muted-foreground ml-1">Time</label>
-                  <Input
-                    type="time"
-                    value={cons.time}
-                    onChange={(e) => updateConsumption(cons.id, 'time', e.target.value)}
-                    className="bg-transparent border-white/20 focus-visible:ring-primary"
-                  />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-xs text-muted-foreground ml-1">Amount (mg)</label>
-                  <Input
-                    type="number"
-                    value={cons.mg}
-                    onChange={(e) => updateConsumption(cons.id, 'mg', Number(e.target.value))}
-                    className="bg-transparent border-white/20 focus-visible:ring-primary"
-                  />
-                </div>
-                <div className="pt-5">
+          <div className="space-y-3">
+            <AnimatePresence>
+              {consumptions.map((cons, idx) => (
+                <motion.div
+                  key={cons.id}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="flex items-end gap-3 bg-white/5 p-3 rounded-lg border border-white/10"
+                >
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground ml-1">Time</label>
+                    <Input
+                      type="time"
+                      value={cons.time}
+                      onChange={(e) => updateConsumption(cons.id, 'time', e.target.value)}
+                      className="bg-transparent border-white/20 focus-visible:ring-primary"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground ml-1">Amount (mg)</label>
+                    <Input
+                      type="number"
+                      value={cons.mg}
+                      onChange={(e) => updateConsumption(cons.id, 'mg', Number(e.target.value))}
+                      className="bg-transparent border-white/20 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => removeConsumption(cons.id)}
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/20 h-9 w-9"
+                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/20 h-10 w-10 shrink-0"
                     disabled={consumptions.length === 1}
                   >
                     <X className="h-4 w-4" />
                   </Button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         </div>
 
         <div className="space-y-1 pt-4 border-t border-white/10">
