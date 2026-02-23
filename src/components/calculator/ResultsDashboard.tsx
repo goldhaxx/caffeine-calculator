@@ -33,6 +33,16 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
         ? 'Fair' 
         : 'Disruptive';
 
+  const formatTime12h = (time24h: string | number) => {
+    if (!time24h) return '';
+    const [hours, minutes] = String(time24h).split(':');
+    if (!hours || !minutes) return String(time24h);
+    const h = parseInt(hours, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${minutes} ${ampm}`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Cards */}
@@ -40,7 +50,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card className="glass-panel border-white/10 h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-outfit text-muted-foreground">At Bedtime ({bedtime})</CardTitle>
+              <CardTitle className="text-lg font-outfit text-muted-foreground">At Bedtime ({formatTime12h(bedtime)})</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline gap-2">
@@ -110,7 +120,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                     dataKey="timeStr" 
                     stroke="rgba(255,255,255,0.5)" 
                     fontSize={12}
-                    tickFormatter={(val, i) => i % 4 === 0 ? val : ''} // show every 2 hours (since 30m steps)
+                    tickFormatter={(val, i) => i % 4 === 0 ? formatTime12h(val) : ''} // show every 2 hours (since 30m steps)
                   />
                   <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
                   <Tooltip 
@@ -118,6 +128,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                     itemStyle={{ color: 'hsl(var(--primary))' }}
                     labelStyle={{ color: 'rgba(255,255,255,0.8)' }}
                     formatter={(val: any) => [`${Number(val).toFixed(1)} mg`, 'Remaining']}
+                    labelFormatter={(label) => formatTime12h(label)}
                   />
                   <Area 
                     type="monotone" 
