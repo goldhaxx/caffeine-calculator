@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Coffee } from 'lucide-react';
+import { Moon, Coffee, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
@@ -23,6 +23,13 @@ export function Header() {
       icon: Coffee,
       color: 'text-amber-500',
       activeColor: 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+    },
+    {
+      href: '/tolerance',
+      label: 'Tolerance',
+      icon: Activity,
+      color: 'text-emerald-500',
+      activeColor: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
     }
   ];
 
