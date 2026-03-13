@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Coffee, Activity } from 'lucide-react';
+import { Moon, Coffee, Activity, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
@@ -30,6 +30,13 @@ export function Header() {
       icon: Activity,
       color: 'text-emerald-500',
       activeColor: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+    },
+    {
+      href: '/references',
+      label: 'References',
+      icon: BookOpen,
+      color: 'text-purple-400',
+      activeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
     }
   ];
 

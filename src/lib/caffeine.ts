@@ -15,9 +15,9 @@ export const METABOLISM_HALF_LIVES = {
 export type MetabolismType = keyof typeof METABOLISM_HALF_LIVES;
 
 export const SENSITIVITY_THRESHOLDS = {
-    sensitive: 10,
-    average: 20,
-    tolerant: 30,
+    sensitive: 15,
+    average: 30,
+    tolerant: 50,
 };
 
 export type SensitivityType = keyof typeof SENSITIVITY_THRESHOLDS;

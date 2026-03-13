@@ -19,18 +19,18 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
   const chartData = generateDecayChartData(consumptions, halfLife);
 
   const getStatusColor = (amount: number) => {
-    if (amount <= 10) return 'text-emerald-400';
-    if (amount <= 20) return 'text-yellow-400';
-    if (amount <= 30) return 'text-orange-400';
+    if (amount <= 15) return 'text-emerald-400';
+    if (amount <= 30) return 'text-yellow-400';
+    if (amount <= 50) return 'text-orange-400';
     return 'text-red-400';
   };
 
-  const statusText = remainingAtBedtime <= 10 
-    ? 'Excellent' 
-    : remainingAtBedtime <= 20 
-      ? 'Good' 
-      : remainingAtBedtime <= 30 
-        ? 'Fair' 
+  const statusText = remainingAtBedtime <= 15
+    ? 'Excellent'
+    : remainingAtBedtime <= 30
+      ? 'Good'
+      : remainingAtBedtime <= 50
+        ? 'Fair'
         : 'Disruptive';
 
   const formatTime12h = (time24h: string | number) => {
@@ -63,8 +63,8 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                 Sleep Quality: {statusText}
               </p>
               <p className="text-sm text-white/50 mt-1">
-                {(remainingAtBedtime > 20) && "Caffeine blocks adenosine receptors, delaying sleep onset and reducing deep sleep."}
-                {(remainingAtBedtime <= 20) && "Minimal caffeine remaining. Sleep architecture should be unaffected."}
+                {(remainingAtBedtime > 30) && "Caffeine blocks adenosine receptors, delaying sleep onset and reducing deep sleep."}
+                {(remainingAtBedtime <= 30) && "Minimal caffeine remaining. Sleep architecture should be largely unaffected."}
               </p>
             </CardContent>
           </Card>
@@ -78,15 +78,15 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
             <CardContent>
               <div className="space-y-3 mt-1">
                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                  <span className="text-sm text-foreground/80">Sensitive (&lt;10mg)</span>
+                  <span className="text-sm text-foreground/80">Sensitive (&lt;15mg)</span>
                   <span className="font-semibold">{safeWindows?.sensitive ? `After ${safeWindows.sensitive}` : 'Not tonight'}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                  <span className="text-sm text-foreground/80">Average (&lt;20mg)</span>
+                  <span className="text-sm text-foreground/80">Average (&lt;30mg)</span>
                   <span className="font-semibold text-primary">{safeWindows?.average ? `After ${safeWindows.average}` : 'Not tonight'}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-foreground/80">Tolerant (&lt;30mg)</span>
+                  <span className="text-sm text-foreground/80">Tolerant (&lt;50mg)</span>
                   <span className="font-semibold">{safeWindows?.tolerant ? `After ${safeWindows.tolerant}` : 'Not tonight'}</span>
                 </div>
               </div>
