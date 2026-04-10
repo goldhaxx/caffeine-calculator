@@ -1,0 +1,274 @@
+[
+  {
+    "file": ".ccanvil/guide/command-reference.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/configuration.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/core-workflow.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/decision-guide.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/foundations.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/getting-started.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/hooks.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/index.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/parallel-sessions.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/session-management.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/sync.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/guide/system-overview.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/ccanvil-sync.sh",
+    "recommended_action": "skip"
+  },
+  {
+    "file": ".ccanvil/scripts/context-budget.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/docs-check.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/fetch-license.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/fix-cloudflare-certs.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/manifest-check.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/operations.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/permissions-audit.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/scripts/security-audit.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/assumptions.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/ccanvil.json.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/checkpoint.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/hooks-reference.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/plan.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/roadmap.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".ccanvil/templates/spec.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/agents/ccanvil-differ.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/agents/code-reviewer.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/agents/spec-writer.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/agents/strategic-advisor.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/ccanvil.json",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/catchup.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-audit.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-demote.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-ignore.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-promote.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-pull.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-push.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/ccanvil-status.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/commit.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/fix-certs.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/plan.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/pr.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/review.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/commands/security-audit.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/branch-name-lint.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/commit-msg-lint.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/format-on-write.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/lint-on-write.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/protect-files.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/hooks/protect-main.sh",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/rules/code-quality.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/rules/deterministic-first.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/rules/self-review.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/rules/tdd.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/rules/workflow.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/settings.json",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/skills/idea/SKILL.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/skills/radar/SKILL.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".claude/skills/tdd/SKILL.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": "CLAUDE.md",
+    "recommended_action": "section-merge"
+  },
+  {
+    "file": ".claudeignore",
+    "recommended_action": "copy"
+  },
+  {
+    "file": "README.md",
+    "recommended_action": "skip"
+  },
+  {
+    "file": "CONTRIBUTING.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".github/PULL_REQUEST_TEMPLATE.md",
+    "recommended_action": "copy"
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "recommended_action": "copy"
+  }
+]
