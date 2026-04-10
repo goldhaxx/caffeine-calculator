@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Pill, Scale } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
@@ -19,7 +19,23 @@ export default function MelatoninPage() {
   const [measuredWeight, setMeasuredWeight] = useState('');
   const [targetDose, setTargetDose] = useState('');
 
-  useState(() => { setMounted(true); });
+  // Load tablet config from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('melatonin-tablet-config');
+    if (saved) {
+      try {
+        setTabletConfig(JSON.parse(saved));
+      } catch (e) {}
+    }
+    setMounted(true);
+  }, []);
+
+  // Persist tablet config to localStorage on change
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('melatonin-tablet-config', JSON.stringify(tabletConfig));
+    }
+  }, [tabletConfig, mounted]);
 
   // Derive results from current inputs
   const measuredWeightNum = parseFloat(measuredWeight);
