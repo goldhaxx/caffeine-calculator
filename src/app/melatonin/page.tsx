@@ -4,12 +4,34 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Pill, Scale } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
+import { MelatoninForm } from '@/components/melatonin/MelatoninForm';
+import { MelatoninResults } from '@/components/melatonin/MelatoninResults';
+import { TabletConfig, calculateWeightToDose, calculateDoseToWeight } from '@/lib/melatonin-math';
+
+const DEFAULT_TABLET: TabletConfig = {
+  tabletWeightG: 0.365,
+  melatoninPerTabletMg: 10,
+};
 
 export default function MelatoninPage() {
   const [mounted, setMounted] = useState(false);
+  const [tabletConfig, setTabletConfig] = useState<TabletConfig>(DEFAULT_TABLET);
+  const [measuredWeight, setMeasuredWeight] = useState('');
+  const [targetDose, setTargetDose] = useState('');
 
-  // Will be expanded in Step 4 with form state and localStorage in Step 6
   useState(() => { setMounted(true); });
+
+  // Derive results from current inputs
+  const measuredWeightNum = parseFloat(measuredWeight);
+  const targetDoseNum = parseFloat(targetDose);
+
+  const weightToDoseResult = !isNaN(measuredWeightNum) && measuredWeightNum > 0
+    ? calculateWeightToDose(tabletConfig, measuredWeightNum)
+    : null;
+
+  const doseToWeightResult = !isNaN(targetDoseNum) && targetDoseNum > 0
+    ? calculateDoseToWeight(tabletConfig, targetDoseNum)
+    : null;
 
   if (!mounted) {
     return <div className="min-h-screen bg-background flex justify-center items-center">
@@ -45,12 +67,24 @@ export default function MelatoninPage() {
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
-          {/* Left Column: Form (Step 4) */}
+          {/* Left Column: Form */}
           <div className="lg:col-span-5 space-y-6">
+            <MelatoninForm
+              tabletConfig={tabletConfig}
+              setTabletConfig={setTabletConfig}
+              measuredWeight={measuredWeight}
+              setMeasuredWeight={setMeasuredWeight}
+              targetDose={targetDose}
+              setTargetDose={setTargetDose}
+            />
           </div>
 
-          {/* Right Column: Results (Step 4) */}
+          {/* Right Column: Results */}
           <div className="lg:col-span-7">
+            <MelatoninResults
+              weightToDose={weightToDoseResult}
+              doseToWeight={doseToWeightResult}
+            />
           </div>
         </div>
       </div>
