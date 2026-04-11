@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ccanvil
+.claude/settings.local.json
+.claude/local/
+.ccanvil/ccanvil.lock
+docs/checkpoint.md

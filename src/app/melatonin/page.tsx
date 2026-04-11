@@ -1,0 +1,109 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Pill, Scale } from 'lucide-react';
+import { Header } from '@/components/layout/Header';
+import { MelatoninForm } from '@/components/melatonin/MelatoninForm';
+import { MelatoninResults } from '@/components/melatonin/MelatoninResults';
+import { TabletConfig, calculateWeightToDose, calculateDoseToWeight } from '@/lib/melatonin-math';
+
+const DEFAULT_TABLET: TabletConfig = {
+  tabletWeightG: 0.365,
+  melatoninPerTabletMg: 10,
+};
+
+export default function MelatoninPage() {
+  const [mounted, setMounted] = useState(false);
+  const [tabletConfig, setTabletConfig] = useState<TabletConfig>(DEFAULT_TABLET);
+  const [measuredWeight, setMeasuredWeight] = useState('');
+  const [targetDose, setTargetDose] = useState('');
+
+  // Load tablet config from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('melatonin-tablet-config');
+    if (saved) {
+      try {
+        setTabletConfig(JSON.parse(saved));
+      } catch (e) {}
+    }
+    setMounted(true);
+  }, []);
+
+  // Persist tablet config to localStorage on change
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('melatonin-tablet-config', JSON.stringify(tabletConfig));
+    }
+  }, [tabletConfig, mounted]);
+
+  // Derive results from current inputs
+  const measuredWeightNum = parseFloat(measuredWeight);
+  const targetDoseNum = parseFloat(targetDose);
+
+  const weightToDoseResult = !isNaN(measuredWeightNum) && measuredWeightNum > 0
+    ? calculateWeightToDose(tabletConfig, measuredWeightNum)
+    : null;
+
+  const doseToWeightResult = !isNaN(targetDoseNum) && targetDoseNum > 0
+    ? calculateDoseToWeight(tabletConfig, targetDoseNum)
+    : null;
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-background flex justify-center items-center">
+      <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
+    </div>;
+  }
+
+  return (
+    <main className="min-h-screen pb-20 relative px-4 md:px-8">
+      <Header />
+
+      {/* Background decorations - indigo/violet for melatonin */}
+      <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-500/10 via-background to-background pointer-events-none -z-10" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-500/5 blur-[120px] pointer-events-none -z-10" />
+      <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none -z-10" />
+
+      <div className="max-w-5xl mx-auto pt-8 space-y-8">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-4 max-w-2xl mx-auto"
+        >
+          <div className="inline-flex items-center justify-center p-3 bg-white/5 border border-white/10 rounded-2xl mb-2 backdrop-blur-md shadow-lg shadow-indigo-500/5">
+            <Pill className="w-6 h-6 text-indigo-400 mr-2" />
+            <Scale className="w-5 h-5 text-violet-400" />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-outfit font-bold tracking-tight text-foreground">
+            Melatonin <span className="bg-gradient-to-r from-indigo-300 to-violet-500 bg-clip-text text-transparent">Microdose</span> Calculator
+          </h1>
+          <p className="text-lg text-muted-foreground leading-relaxed">
+            Precisely convert between tablet weight and melatonin dose for accurate milligram-scale microdosing.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
+          {/* Left Column: Form */}
+          <div className="lg:col-span-5 space-y-6">
+            <MelatoninForm
+              tabletConfig={tabletConfig}
+              setTabletConfig={setTabletConfig}
+              measuredWeight={measuredWeight}
+              setMeasuredWeight={setMeasuredWeight}
+              targetDose={targetDose}
+              setTargetDose={setTargetDose}
+            />
+          </div>
+
+          {/* Right Column: Results */}
+          <div className="lg:col-span-7">
+            <MelatoninResults
+              weightToDose={weightToDoseResult}
+              doseToWeight={doseToWeightResult}
+            />
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}

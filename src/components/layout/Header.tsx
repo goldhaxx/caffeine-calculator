@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Coffee, Activity, BookOpen } from 'lucide-react';
+import { Moon, Coffee, Activity, Pill, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
@@ -30,6 +30,13 @@ export function Header() {
       icon: Activity,
       color: 'text-emerald-500',
       activeColor: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+    },
+    {
+      href: '/melatonin',
+      label: 'Melatonin',
+      icon: Pill,
+      color: 'text-indigo-400',
+      activeColor: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
     },
     {
       href: '/references',
