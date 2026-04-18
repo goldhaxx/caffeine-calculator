@@ -3,7 +3,7 @@
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { BookOpen, ExternalLink } from 'lucide-react';
+import { BookOpen, ExternalLink, Film } from 'lucide-react';
 
 interface Reference {
   id: number;
@@ -16,6 +16,26 @@ interface Reference {
   url: string;
   usedFor: string;
 }
+
+interface MediaSource {
+  id: number;
+  title: string;
+  creator: string;
+  platform: string;
+  url: string;
+  note: string;
+}
+
+const mediaSources: MediaSource[] = [
+  {
+    id: 1,
+    title: 'How Caffeine Addiction Changed History (ft. Michael Pollan)',
+    creator: 'WIRED, featuring Michael Pollan',
+    platform: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=WD6cYabx0nk',
+    note: 'Historical and cultural context on how caffeine consumption shaped human behavior and society.',
+  },
+];
 
 const references: Reference[] = [
   {
@@ -320,6 +340,48 @@ export default function ReferencesPage() {
               </motion.div>
             ))}
           </div>
+        </motion.div>
+
+        {/* Media & Further Viewing */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <Card className="glass-panel border-white/10 mt-8">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-amber-400/80" />
+                <CardTitle className="font-outfit text-lg text-white/80">Media & Further Viewing</CardTitle>
+              </div>
+              <p className="text-xs text-white/50 leading-relaxed pt-1">
+                Popular media and educational content related to caffeine. These are not peer-reviewed sources and do not inform the calculator&apos;s pharmacokinetic model — they are included for cultural and historical context.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {mediaSources.map((item) => (
+                <div key={item.id} className="flex gap-4">
+                  <span className="text-amber-400/70 font-outfit font-bold text-base min-w-[2rem] text-right">
+                    {item.id}.
+                  </span>
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-sm text-foreground leading-relaxed">
+                      <span className="text-white font-medium">&ldquo;{item.title}&rdquo;</span>
+                      {' — '}
+                      <span className="text-white/70">{item.creator}</span>
+                      <span className="text-white/50"> ({item.platform})</span>
+                    </p>
+                    <p className="text-xs text-white/40 leading-relaxed">{item.note}</p>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-amber-400/70 hover:text-amber-400 transition-colors mt-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Watch
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Limitations Note */}
