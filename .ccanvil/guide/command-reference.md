@@ -4,7 +4,7 @@
 
 | Command | Phase | What it does | Files affected |
 |---------|-------|-------------|----------------|
-| *"Describe feature"* | Spec | Triggers spec-writer agent | Writes `docs/specs/<id>.md` |
+| `/spec <description>` | Spec | Writes feature spec with acceptance criteria | Writes `docs/specs/<id>.md` |
 | `/plan` | Plan | Creates ordered TDD steps from spec | Writes `docs/plan.md` |
 | *"Start building"* | Build | Enters TDD cycle | Source + test files |
 | `/commit` | Build | Stages, generates conventional commit, runs tests | Git history |
@@ -15,9 +15,10 @@
 
 | Command | When | What it does |
 |---------|------|-------------|
-| `/catchup` | After `/clear` | Reads checkpoint + git state, reports status |
+| `/catchup` | After `/compact` or `/clear` | Reads checkpoint + git state, reports status |
 | *"Checkpoint this"* | Pausing work | Writes state to `docs/checkpoint.md`, commits |
-| `/clear` | Between tasks | Resets context (built-in) |
+| `/compact` | Between tasks | Compresses context, retains summary (built-in) |
+| `/clear` | Full reset (rare) | Resets context entirely (built-in) |
 | `/compact` | Context heavy | Summarizes context to free space (built-in) |
 | `/cost` | Monitoring | Shows token usage (built-in) |
 
@@ -31,14 +32,15 @@
 | `/ccanvil-promote <file>` | Project → Hub | Promotes a local file to the hub |
 | `/ccanvil-demote <file>` | Local | Marks a hub file as local override |
 | `/ccanvil-ignore <file>` | Local | Marks file as node-only (permanently excluded from sync) |
+| `ccanvil-sync.sh broadcast [--dry-run]` | Hub → All nodes | Pushes auto-updates to all registered nodes in one pass |
 
 ## Utility Commands
 
 | Command | What it does |
 |---------|-------------|
-| `/ccanvil-audit` | Analyzes preset for stochastic-to-deterministic improvement opportunities. Calls `manifest-check.sh check` for deterministic README verification. Includes permissions audit and context budget check. |
+| `/ccanvil-audit` | Analyzes configuration for stochastic-to-deterministic improvement opportunities. Calls `manifest-check.sh check` for deterministic README verification. Includes permissions audit and context budget check. |
 | `/fix-certs` | Diagnoses and repairs Cloudflare WARP TLS certificate issues |
-| `/init` | Initializes a new project from the hub preset (global command) |
+| `/init` | Initializes a new project from the ccanvil hub (global command) |
 
 ## Permissions Audit Scripts
 
@@ -52,7 +54,7 @@
 
 | Command | What it does |
 |---------|-------------|
-| `context-budget.sh check` | Measure token cost of always-loaded preset files → JSON |
+| `context-budget.sh check` | Measure token cost of always-loaded configuration files → JSON |
 | `context-budget.sh check --text` | Human-readable table with per-file tokens and budget status |
 | `context-budget.sh check --model MODEL_ID` | Set context window from known model (e.g., `claude-opus-4-6[1m]` → 1M) |
 | `context-budget.sh check --context-window N` | Set context window size directly (overrides `--model`) |
@@ -63,6 +65,27 @@
 | Command | What it does |
 |---------|-------------|
 | `operations.sh resolve <operation> [--project-dir DIR]` | Resolve operation to provider/mechanism/invocation JSON based on `.claude/ccanvil.json` routing config. Returns local bash adapter when no config exists. |
+
+## Registry & Node Identity
+
+| Command | What it does |
+|---------|-------------|
+| `ccanvil-sync.sh register` | Register the current project in the hub. Generates a stable UUID at first run (stored in `.claude/ccanvil.local.json`, mirrored in lockfile). Registry is keyed by UUID; path stored in `~`-portable form |
+| `ccanvil-sync.sh registry` | List all registered downstream projects with UUID, name, path, last-synced info |
+| `ccanvil-sync.sh broadcast` | Iterate registered nodes by UUID (auto-migrates legacy path-keyed entries). Reports `STALE` when a UUID's path no longer exists |
+
+Node UUIDs make registration resilient to renames, moves, machine changes, and multi-user setups. The UUID is authoritative; paths self-update on each sync.
+
+`register` and `broadcast` auto-commit their registry mutations in the hub (`chore(registry): ...`) so the hub stays clean after every sync event. Bootstrap commits in nodes skip gitignored files (e.g., lockfiles in projects that don't track them).
+
+## Global Commands Sync
+
+| Command | What it does |
+|---------|-------------|
+| `ccanvil-sync.sh pull-globals [--force]` | Copy hub's `global-commands/ccanvil-*.md` to `~/.claude/commands/`. Conflict-safe: differing local files are reported with diffs, not overwritten. `--force` overwrites conflicts |
+| `/ccanvil-pull-globals` | Skill wrapper — runs the script and summarizes results |
+
+Only files matching `ccanvil-*.md` are hub-owned; all other files in `~/.claude/commands/` are user-owned and never touched by ccanvil. This keeps ccanvil as a bolt-on, not a replacement for your Claude Code setup.
 
 ## Multi-Spec Lifecycle Scripts
 
@@ -100,6 +123,14 @@
 | `manifest-check.sh extract-identity <file>` | Extract identity metadata (comment headers, frontmatter, headings) |
 | `manifest-check.sh check <readme>` | Full report: verified + stale (with diffs) + missing + untracked (with identity) |
 | `manifest-check.sh verify <paths...>` | Update lockfile entries for confirmed paths |
+
+## Stack Distribution Scripts
+
+| Command | What it does |
+|---------|-------------|
+| `ccanvil-sync.sh stack-list` | List available stack profiles as JSON array `[{id, description, files}]` |
+| `ccanvil-sync.sh stack-apply <stack-id>` | Apply a stack profile: copy files, merge CLAUDE.md section, merge settings.json hooks, update lockfile + ccanvil.json. Idempotent — re-running patches without clobbering |
+| `ccanvil-sync.sh init-preflight <hub> --stack <id>` | Include stack files in init preflight plan |
 
 ## Docs Lifecycle Scripts
 
