@@ -6,6 +6,7 @@
 #   ccanvil-sync.sh init-preflight <hub>       Scan for conflicts, output merge plan
 #   ccanvil-sync.sh init-apply <hub> <plan>    Execute an approved merge plan
 #   ccanvil-sync.sh status                     Show file provenance and sync state
+#   ccanvil-sync.sh changelog                List hub commits since last sync (JSON)
 #   ccanvil-sync.sh diff [file]            Show diff between local and hub versions
 #   ccanvil-sync.sh hash <file>            Compute sha256 of a file
 #   ccanvil-sync.sh lock-get <file>        Read a lockfile entry (JSON)
@@ -42,6 +43,7 @@ EXCLUDED_FILES=(
 
 # Extra files copied during init that aren't in TRACKED_PATTERNS
 INIT_EXTRA_FILES=(
+  ".gitignore"
   ".claudeignore"
   ".claude/lint.json"
 )
@@ -75,6 +77,34 @@ require_jq() {
 }
 
 # Validate jq output is non-empty valid JSON before mv — prevents lockfile corruption
+# commit_hub_file: auto-commit a single file in the hub repo.
+# No-op if: hub isn't a git repo, file unchanged, file not tracked.
+# On commit failure: prints a warning, returns 0 (AC-8 failure tolerance).
+# Usage: commit_hub_file <hub_path> <rel_file> <commit_message>
+commit_hub_file() {
+  local hub_path="$1"
+  local rel_file="$2"
+  local message="$3"
+
+  # Must be a git repo
+  git -C "$hub_path" rev-parse --git-dir >/dev/null 2>&1 || return 0
+
+  # Must actually have changes to the file (tracked-and-modified OR untracked)
+  if git -C "$hub_path" diff --quiet -- "$rel_file" 2>/dev/null && \
+     git -C "$hub_path" diff --cached --quiet -- "$rel_file" 2>/dev/null; then
+    # Not modified or staged. Check if untracked.
+    if ! git -C "$hub_path" ls-files --others --exclude-standard -- "$rel_file" 2>/dev/null | grep -q .; then
+      return 0
+    fi
+  fi
+
+  (cd "$hub_path" && \
+    ALLOW_MAIN=1 git add -- "$rel_file" && \
+    ALLOW_MAIN=1 git commit -m "$message" --quiet --only -- "$rel_file" 2>&1) || \
+    echo "WARNING: auto-commit of $rel_file failed (hub left dirty)" >&2
+  return 0
+}
+
 safe_lock_mv() {
   local tmp="$1"
   local target="$2"
@@ -96,11 +126,8 @@ get_hub_source_raw() {
 }
 
 get_hub_source() {
-  # Returns absolute path to the distributable root within the hub.
-  # If hub has preset/, distributable files live there; otherwise hub root.
-  local src
-  src=$(get_hub_source_raw)
-  hub_dist_root "$src"
+  # Returns absolute path to the hub root (where distributable files live).
+  get_hub_source_raw
 }
 
 get_hub_source_display() {
@@ -120,6 +147,154 @@ file_hash() {
 
 timestamp() {
   date +%s
+}
+
+# UUID v4 regex (lowercase)
+UUID_V4_REGEX='^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+
+generate_uuid() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import uuid; print(uuid.uuid4())'
+  else
+    die "No UUID generator available. Install uuidgen or python3."
+  fi
+}
+
+validate_uuid() {
+  local uuid="$1"
+  [[ "$uuid" =~ $UUID_V4_REGEX ]]
+}
+
+normalize_path() {
+  # Convert absolute path to ~-form if under $HOME
+  local path="$1"
+  echo "${path/#$HOME/~}"
+}
+
+expand_path() {
+  # Expand ~-form path to absolute using current $HOME
+  local path="$1"
+  echo "${path/#\~/$HOME}"
+}
+
+# Get or create node UUID. Canonical source: .claude/ccanvil.local.json.
+# Mirrors to .ccanvil/ccanvil.lock if lockfile exists.
+get_or_create_node_uuid() {
+  local ccanvil_json=".claude/ccanvil.local.json"
+  local existing=""
+
+  # Check canonical source first
+  if [[ -f "$ccanvil_json" ]]; then
+    existing=$(jq -r '.node_uuid // empty' "$ccanvil_json" 2>/dev/null || true)
+    if [[ -n "$existing" ]]; then
+      validate_uuid "$existing" || die "Invalid UUID in $ccanvil_json: $existing"
+      echo "$existing"
+      return 0
+    fi
+  fi
+
+  # Fall back to lockfile
+  if [[ -f "$LOCKFILE" ]]; then
+    existing=$(jq -r '.node_uuid // empty' "$LOCKFILE" 2>/dev/null || true)
+    if [[ -n "$existing" ]]; then
+      validate_uuid "$existing" || die "Invalid UUID in $LOCKFILE: $existing"
+      echo "$existing"
+      return 0
+    fi
+  fi
+
+  # Generate new
+  local new_uuid
+  new_uuid=$(generate_uuid)
+  validate_uuid "$new_uuid" || die "Generated invalid UUID: $new_uuid"
+  echo "$new_uuid"
+}
+
+# Migrate path-keyed registry entries to UUID-keyed. Idempotent.
+# For each legacy path-key, resolve the node's UUID (from its ccanvil.json),
+# rewrite the entry under the UUID key, delete the old path key.
+migrate_registry() {
+  local registry="$1"
+  [[ -f "$registry" ]] || return 0
+
+  local legacy_keys
+  legacy_keys=$(jq -r '.nodes | keys[] | select(test("^[/~]"))' "$registry" 2>/dev/null || true)
+  [[ -z "$legacy_keys" ]] && return 0
+
+  while IFS= read -r legacy_key; do
+    [[ -z "$legacy_key" ]] && continue
+
+    # Resolve path and check node existence
+    local resolved
+    resolved=$(expand_path "$legacy_key")
+    if [[ ! -d "$resolved" ]]; then
+      # Leave entry as-is; will be reported as STALE during iteration.
+      continue
+    fi
+
+    # Read UUID from ccanvil.local.json if present; otherwise generate in the node.
+    local node_uuid=""
+    if [[ -f "$resolved/.claude/ccanvil.local.json" ]]; then
+      node_uuid=$(jq -r '.node_uuid // empty' "$resolved/.claude/ccanvil.local.json" 2>/dev/null)
+    fi
+    if [[ -z "$node_uuid" ]]; then
+      # Generate + persist inside the node via subshell (cd doesn't leak).
+      node_uuid=$(cd "$resolved" && {
+        u=$(get_or_create_node_uuid 2>/dev/null) && \
+        persist_node_uuid "$u" 2>/dev/null && \
+        echo "$u"
+      })
+      [[ -z "$node_uuid" ]] && continue
+      validate_uuid "$node_uuid" || continue
+    fi
+
+    # Rewrite entry under UUID key with portable path
+    local portable_path
+    portable_path=$(normalize_path "$resolved")
+    local node_name
+    node_name=$(basename "$resolved")
+
+    local tmp
+    tmp=$(mktemp)
+    jq --arg old "$legacy_key" --arg u "$node_uuid" --arg p "$portable_path" --arg n "$node_name" '
+      .nodes[$u] = (.nodes[$u] // {}) + (.nodes[$old] // {}) + {"name": $n, "path": $p}
+      | del(.nodes[$old])
+    ' "$registry" > "$tmp"
+    if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
+      mv "$tmp" "$registry"
+    else
+      rm -f "$tmp"
+    fi
+  done <<< "$legacy_keys"
+}
+
+# Write UUID to both canonical (.claude/ccanvil.local.json) and mirror (lockfile).
+persist_node_uuid() {
+  local uuid="$1"
+  validate_uuid "$uuid" || die "Cannot persist invalid UUID: $uuid"
+
+  # Canonical: .claude/ccanvil.local.json
+  local ccanvil_json=".claude/ccanvil.local.json"
+  mkdir -p "$(dirname "$ccanvil_json")"
+  if [[ ! -f "$ccanvil_json" ]]; then
+    echo '{}' > "$ccanvil_json"
+  fi
+  local tmp
+  tmp=$(mktemp)
+  jq --arg u "$uuid" '.node_uuid = $u' "$ccanvil_json" > "$tmp" && mv "$tmp" "$ccanvil_json"
+
+  # Mirror: lockfile (if it exists)
+  if [[ -f "$LOCKFILE" ]]; then
+    tmp=$(mktemp)
+    jq --arg u "$uuid" '.node_uuid = $u' "$LOCKFILE" > "$tmp"
+    if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
+      mv "$tmp" "$LOCKFILE"
+    else
+      rm -f "$tmp"
+    fi
+  fi
 }
 
 
@@ -161,23 +336,12 @@ scan_tracked_files() {
   printf '%s\n' "${files[@]}" | sort -u
 }
 
-# Resolve the distributable root within a hub.
-# If the hub has a preset/ directory, distributable files live there.
-# Otherwise (legacy or non-hub), scan from the path directly.
-hub_dist_root() {
-  local hub_path="$1"
-  if [[ -d "$hub_path/preset" ]]; then
-    echo "$hub_path/preset"
-  else
-    echo "$hub_path"
-  fi
-}
 
 # Scan hub for all files matching tracked patterns
 scan_hub_files() {
   local hub_path="$1"
   local dist_root
-  dist_root=$(hub_dist_root "$hub_path")
+  dist_root="$hub_path"
   local files=()
   for pattern in "${TRACKED_PATTERNS[@]}"; do
     local matches
@@ -203,9 +367,9 @@ cmd_init() {
 
   [[ -d "$hub_path" ]] || die "Hub not found at: $hub_path"
 
-  # Resolve dist root (preset/ if hub, hub_path if downstream)
+  # Resolve dist root (hub root where distributable files live)
   local dist_root
-  dist_root=$(hub_dist_root "$hub_path")
+  dist_root="$hub_path"
 
   # Get hub git version
   local hub_version="unknown"
@@ -269,27 +433,46 @@ cmd_init() {
   echo "  Total files: $total"
   echo "  Clean: $clean | Modified: $modified | Local: $local_only | Hub-only: $hub_only"
 
-  # Check if project is registered with the hub
-  local hub_root_abs="${hub_path/#\~/$HOME}"
-  local registry="$hub_root_abs/.ccanvil/registry.json"
-  local node_path
-  node_path=$(pwd)
-  if [[ ! -f "$registry" ]] || ! jq -e --arg p "$node_path" '.nodes[$p]' "$registry" >/dev/null 2>&1; then
-    echo ""
-    echo "NOTE: This project is not registered with the hub."
-    echo "  Register to enable project tracking and discovery."
-    echo "  Run: ccanvil-sync.sh register"
-  fi
+  # Ensure node UUID exists and is mirrored in both lockfile and ccanvil.json
+  local node_uuid
+  node_uuid=$(get_or_create_node_uuid)
+  persist_node_uuid "$node_uuid"
+
+  # Auto-register with the hub
+  cmd_register 2>/dev/null || echo "WARNING: Hub registration failed (non-fatal)"
 }
 
 cmd_init_preflight() {
   local hub_path="${1:?Usage: ccanvil-sync.sh init-preflight <hub-path>}"
   hub_path="${hub_path/#\~/$HOME}"
+  shift
 
   [[ -d "$hub_path" ]] || die "Hub not found at: $hub_path"
 
+  # Parse --stack flags
+  local stack_ids=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stack) shift; stack_ids+=("${1:?--stack requires an argument}"); shift ;;
+      *) shift ;;
+    esac
+  done
+
+  # Also read stacks from ccanvil.json if present
+  if [[ -f ".claude/ccanvil.json" ]]; then
+    while IFS= read -r sid; do
+      [[ -z "$sid" ]] && continue
+      # Avoid duplicates
+      local already=false
+      for existing in "${stack_ids[@]+"${stack_ids[@]}"}"; do
+        [[ "$existing" == "$sid" ]] && already=true && break
+      done
+      $already || stack_ids+=("$sid")
+    done < <(jq -r '.stacks[]? // empty' ".claude/ccanvil.json" 2>/dev/null)
+  fi
+
   local dist_root
-  dist_root=$(hub_dist_root "$hub_path")
+  dist_root="$hub_path"
   local github_tpl_root="$dist_root/.ccanvil/templates/github"
 
   local plan="[]"
@@ -376,6 +559,43 @@ cmd_init_preflight() {
     done < <(scan_tracked_files)
   fi
 
+  # 5. Scan stack profile files (AC-5)
+  for sid in "${stack_ids[@]+"${stack_ids[@]}"}"; do
+    local stack_manifest="$dist_root/hub/stacks/$sid/manifest.json"
+    [[ -f "$stack_manifest" ]] || continue
+    local stack_dir="$dist_root/hub/stacks/$sid"
+    local fc
+    fc=$(jq '.files | length' "$stack_manifest")
+    for i in $(seq 0 $((fc - 1))); do
+      local src tgt
+      src=$(jq -r ".files[$i].source" "$stack_manifest")
+      tgt=$(jq -r ".files[$i].target" "$stack_manifest")
+      # Skip if already seen
+      local already_seen=false
+      for s in "${seen_files[@]+"${seen_files[@]}"}"; do
+        [[ "$s" == "$tgt" ]] && already_seen=true && break
+      done
+      $already_seen && continue
+
+      if [[ -f "$tgt" ]]; then
+        local hub_h local_h
+        hub_h=$(file_hash "$stack_dir/$src")
+        local_h=$(file_hash "$tgt")
+        if [[ "$hub_h" == "$local_h" ]]; then
+          plan=$(echo "$plan" | jq --arg f "$tgt" --arg s "stack:$sid" \
+            '. + [{"file": $f, "source": $s, "recommended_action": "skip", "reason": "Already matches stack"}]')
+        else
+          plan=$(echo "$plan" | jq --arg f "$tgt" --arg s "stack:$sid" \
+            '. + [{"file": $f, "source": $s, "recommended_action": "review", "reason": "Local differs from stack; needs user decision"}]')
+        fi
+      else
+        plan=$(echo "$plan" | jq --arg f "$tgt" --arg s "stack:$sid" \
+          '. + [{"file": $f, "source": $s, "recommended_action": "copy", "reason": "New file from stack"}]')
+      fi
+      seen_files+=("$tgt")
+    done
+  done
+
   # Compute summary
   local conflicts auto total
   conflicts=$(echo "$plan" | jq '[.[] | select(.recommended_action == "review")] | length')
@@ -395,32 +615,57 @@ cmd_init_apply() {
   [[ -f "$plan_file" ]] || die "Plan file not found: $plan_file"
 
   local dist_root
-  dist_root=$(hub_dist_root "$hub_path")
+  dist_root="$hub_path"
   local github_tpl_root="$dist_root/.ccanvil/templates/github"
 
   local copied=0 skipped=0 merged=0 errors=0
 
+  # Auto-detect format: accept both {plan:[], summary:{}} and bare []
+  local plan_expr='.'
+  if jq -e 'type == "object" and has("plan")' "$plan_file" > /dev/null 2>&1; then
+    plan_expr='.plan'
+  elif ! jq -e 'type == "array"' "$plan_file" > /dev/null 2>&1; then
+    die "Invalid plan file: expected JSON array or object with .plan key"
+  fi
+
   # Process each entry in the plan
   local entry_count
-  entry_count=$(jq 'length' "$plan_file")
+  entry_count=$(jq "$plan_expr | length" "$plan_file")
 
   local i=0
   while [[ $i -lt $entry_count ]]; do
-    local file action
-    file=$(jq -r ".[$i].file" "$plan_file")
-    action=$(jq -r ".[$i].recommended_action" "$plan_file")
+    local file action source
+    file=$(jq -r "$plan_expr | .[$i].file" "$plan_file")
+    action=$(jq -r "$plan_expr | .[$i].recommended_action" "$plan_file")
+    source=$(jq -r "$plan_expr | .[$i].source // empty" "$plan_file")
 
     # Resolve hub source file path
-    # Check GitHub template mappings first, then tracked patterns
     local hub_file=""
-    for mapping in "${INIT_GITHUB_TEMPLATES[@]}"; do
-      local tpl_src="${mapping%%:*}"
-      local tpl_dst="${mapping#*:}"
-      if [[ "$tpl_dst" == "$file" ]]; then
-        hub_file="$github_tpl_root/$tpl_src"
-        break
+
+    # Check stack source first (AC-6)
+    if [[ "$source" == stack:* ]]; then
+      local stack_id="${source#stack:}"
+      local stack_manifest="$dist_root/hub/stacks/$stack_id/manifest.json"
+      if [[ -f "$stack_manifest" ]]; then
+        local stack_src
+        stack_src=$(jq -r --arg t "$file" '.files[] | select(.target == $t) | .source' "$stack_manifest")
+        if [[ -n "$stack_src" ]]; then
+          hub_file="$dist_root/hub/stacks/$stack_id/$stack_src"
+        fi
       fi
-    done
+    fi
+
+    # Check GitHub template mappings
+    if [[ -z "$hub_file" ]]; then
+      for mapping in "${INIT_GITHUB_TEMPLATES[@]}"; do
+        local tpl_src="${mapping%%:*}"
+        local tpl_dst="${mapping#*:}"
+        if [[ "$tpl_dst" == "$file" ]]; then
+          hub_file="$github_tpl_root/$tpl_src"
+          break
+        fi
+      done
+    fi
     if [[ -z "$hub_file" && -f "$dist_root/$file" ]]; then
       hub_file="$dist_root/$file"
     fi
@@ -574,6 +819,54 @@ cmd_status() {
   echo "Statuses: CLEAN=synced, MODIFIED=locally changed, MODIFIED*=changed since last sync,"
   echo "          LOCAL=project-only, PROMOTED=pushed to hub, HUB-ONLY=not yet pulled,"
   echo "          NODE-ONLY=excluded from sync (use /ccanvil-ignore to set, ccanvil-sync.sh track to undo)"
+}
+
+cmd_changelog() {
+  require_lockfile
+  local hub_root
+  hub_root=$(get_hub_source_raw)
+
+  [[ -d "$hub_root" ]] || die "Hub not found at: $hub_root"
+
+  local last_version
+  last_version=$(jq -r '.hub_version' "$LOCKFILE")
+
+  local current_version
+  current_version=$(git -C "$hub_root" rev-parse --short HEAD)
+
+  # Up-to-date: no new commits
+  if [[ "$last_version" == "$current_version" ]]; then
+    jq -n --arg from "$last_version" --arg to "$current_version" \
+      '{"status":"up-to-date","from":$from,"to":$to,"commit_count":0,"commits":[],"files_changed":[]}'
+    return 0
+  fi
+
+  # Validate last_version exists in hub repo
+  if ! git -C "$hub_root" rev-parse "$last_version" >/dev/null 2>&1; then
+    die "Last synced version $last_version not found in hub repo. History may have been rewritten."
+  fi
+
+  # Commit log
+  local commits_json="[]"
+  while IFS=$'\t' read -r hash subject; do
+    commits_json=$(echo "$commits_json" | jq --arg h "$hash" --arg s "$subject" \
+      '. + [{"hash": $h, "subject": $s}]')
+  done < <(git -C "$hub_root" log --format="%h%x09%s" "$last_version".."$current_version")
+
+  local commit_count
+  commit_count=$(echo "$commits_json" | jq 'length')
+
+  # Files changed across the range
+  local files_json="[]"
+  while IFS=$'\t' read -r change_type filepath; do
+    files_json=$(echo "$files_json" | jq --arg t "$change_type" --arg f "$filepath" \
+      '. + [{"type": $t, "file": $f}]')
+  done < <(git -C "$hub_root" diff --name-status "$last_version".."$current_version")
+
+  jq -n --arg from "$last_version" --arg to "$current_version" \
+    --argjson count "$commit_count" \
+    --argjson commits "$commits_json" --argjson files "$files_json" \
+    '{"status":"behind","from":$from,"to":$to,"commit_count":$count,"commits":$commits,"files_changed":$files}'
 }
 
 cmd_diff() {
@@ -1563,7 +1856,7 @@ cmd_migrate() {
   [[ -d "$hub_path" ]] || die "Hub not found at: $hub_path"
 
   local dist_root
-  dist_root=$(hub_dist_root "$hub_path")
+  dist_root="$hub_path"
 
   # Remove stale-named files from previous structure
   local stale_files=(
@@ -1653,16 +1946,26 @@ cmd_register() {
   local ts
   ts=$(timestamp)
 
+  # Ensure node UUID exists
+  local node_uuid
+  node_uuid=$(get_or_create_node_uuid)
+  persist_node_uuid "$node_uuid"
+
+  # Normalize path to ~-form for portability
+  local portable_path
+  portable_path=$(normalize_path "$node_path")
+
   # Create registry file if it doesn't exist
   if [[ ! -f "$registry" ]]; then
     mkdir -p "$(dirname "$registry")"
     echo '{"nodes":{}}' > "$registry"
   fi
 
-  # Add or update this project's entry
+  # Key by UUID. Update existing entry if present (preserve last_synced fields).
   local tmp; tmp=$(mktemp)
-  jq --arg p "$node_path" --arg n "$node_name" --arg t "$ts" \
-    '.nodes[$p] = {"name": $n, "registered_at": $t}' "$registry" > "$tmp" || true
+  jq --arg u "$node_uuid" --arg p "$portable_path" --arg n "$node_name" --arg t "$ts" \
+    '.nodes[$u] = ((.nodes[$u] // {}) + {"name": $n, "path": $p, "registered_at": $t})' \
+    "$registry" > "$tmp" || true
   if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
     mv "$tmp" "$registry"
   else
@@ -1670,7 +1973,11 @@ cmd_register() {
     die "Failed to update registry"
   fi
 
-  echo "REGISTERED: $node_name ($node_path)"
+  echo "REGISTERED: $node_name ($portable_path) [$node_uuid]"
+
+  # Auto-commit the registry mutation so the hub stays clean (AC-1, AC-6)
+  commit_hub_file "$hub_root" ".ccanvil/registry.json" \
+    "chore(registry): register $node_name [$node_uuid]"
 }
 
 # registry: List all registered downstream projects.
@@ -1688,7 +1995,502 @@ cmd_registry() {
 
   echo "Registered downstream projects:"
   echo ""
-  jq -r '.nodes | to_entries[] | "  \(.value.name) — \(.key) (registered: \(.value.registered_at))"' "$registry"
+  jq -r '.nodes | to_entries[] | "  \(.value.name) [\(.key)]\n    path: \(.value.path // .key)\n    registered: \(.value.registered_at)  |  last_synced: \(.value.last_synced // "never")  |  version: \(.value.last_synced_version // "never")"' "$registry"
+}
+
+# broadcast: Push hub updates to all registered downstream nodes.
+# Runs deterministic phases only (auto-update, section-merge, finalize).
+# Conflicts are collected and reported, not resolved.
+# Usage: broadcast [--dry-run]
+cmd_broadcast() {
+  local dry_run=false
+  if [[ "${1:-}" == "--dry-run" ]]; then
+    dry_run=true
+  fi
+
+  # Find hub root: if we have a lockfile, use it; otherwise assume current dir is hub
+  local hub_root
+  if [[ -f "$LOCKFILE" ]]; then
+    hub_root=$(get_hub_source_raw)
+  else
+    hub_root=$(pwd)
+  fi
+
+  local registry="$hub_root/.ccanvil/registry.json"
+  if [[ ! -f "$registry" ]]; then
+    echo "No registered nodes. Run 'ccanvil-sync.sh register' from a downstream project."
+    return 0
+  fi
+
+  local node_count
+  node_count=$(jq '.nodes | length' "$registry")
+  if [[ "$node_count" -eq 0 ]]; then
+    echo "No registered nodes."
+    return 0
+  fi
+
+  local synced=0 skipped=0 unreachable=0
+  local skip_reasons=""
+  local all_conflicts=""
+  local synced_uuids=""
+  local hub_version
+  hub_version=$(git -C "$hub_root" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+  # Migrate legacy path-keyed entries to UUID-keyed (AC-7, AC-8).
+  # Idempotent — entries already keyed by UUID are skipped.
+  migrate_registry "$registry"
+
+  # Auto-commit any migration changes so the hub stays clean during the loop (AC-3, AC-7)
+  if ! $dry_run; then
+    commit_hub_file "$hub_root" ".ccanvil/registry.json" \
+      "chore(registry): migrate to UUID keys"
+  fi
+
+  # Iterate over all registered nodes (keyed by UUID post-migration)
+  while IFS= read -r entry_key; do
+    local node_uuid node_name portable_path node_path
+
+    if [[ "$entry_key" =~ $UUID_V4_REGEX ]]; then
+      # UUID-keyed entry
+      node_uuid="$entry_key"
+      node_name=$(jq -r --arg u "$node_uuid" '.nodes[$u].name // "unknown"' "$registry")
+      portable_path=$(jq -r --arg u "$node_uuid" '.nodes[$u].path // empty' "$registry")
+    else
+      # Legacy path-keyed entry that migration couldn't handle (node missing)
+      node_uuid=""
+      node_name=$(jq -r --arg p "$entry_key" '.nodes[$p].name // "unknown"' "$registry")
+      portable_path="$entry_key"
+    fi
+    node_path=$(expand_path "$portable_path")
+
+    echo ""
+    echo "=== $node_name ($node_path) ==="
+
+    # AC-6: Detect stale paths
+    if [[ -z "$portable_path" ]] || [[ ! -d "$node_path" ]]; then
+      if [[ -n "$node_uuid" ]]; then
+        echo "  STALE: $node_name ($node_uuid) at $portable_path"
+        skip_reasons+="  $node_name: STALE ($node_uuid) — path $portable_path no longer exists"$'\n'
+      else
+        echo "  SKIP: path does not exist"
+        skip_reasons+="  $node_name: path does not exist"$'\n'
+      fi
+      unreachable=$((unreachable + 1))
+      continue
+    fi
+
+    # AC-2: run pre-check in node subshell
+    local precheck_out
+    precheck_out=$(cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pre-check 2>&1) || {
+      echo "  SKIP: pre-check failed"
+      echo "  $precheck_out" | head -5
+      skipped=$((skipped + 1))
+      skip_reasons+="  $node_name: pre-check failed"$'\n'
+      continue
+    }
+
+    # Handle bootstrap: if pre-check printed BOOTSTRAPPED, commit the
+    # bootstrapped files (sync script + lockfile) so the working tree is
+    # clean, then re-run pre-check.
+    if echo "$precheck_out" | grep -q "^BOOTSTRAPPED:"; then
+      echo "  Bootstrapped sync script — committing..."
+      if ! $dry_run; then
+        # Only add files that aren't gitignored (AC-5).
+        # Some nodes gitignore the lockfile — still sync them, just skip that file.
+        local bootstrap_files=()
+        if ! (cd "$node_path" && git check-ignore -q .ccanvil/scripts/ccanvil-sync.sh 2>/dev/null); then
+          bootstrap_files+=(".ccanvil/scripts/ccanvil-sync.sh")
+        fi
+        if ! (cd "$node_path" && git check-ignore -q .ccanvil/ccanvil.lock 2>/dev/null); then
+          bootstrap_files+=(".ccanvil/ccanvil.lock")
+        fi
+
+        if [[ ${#bootstrap_files[@]} -gt 0 ]]; then
+          (cd "$node_path" && \
+            git add "${bootstrap_files[@]}" && \
+            git commit -m "chore(sync): bootstrap sync script from hub @ $hub_version" \
+              --no-gpg-sign --quiet 2>&1) | sed 's/^/  /' || true
+        else
+          echo "  (all bootstrap files gitignored — skipping commit)"
+        fi
+      fi
+      echo "  Re-checking..."
+      precheck_out=$(cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pre-check 2>&1) || {
+        echo "  SKIP: pre-check failed after bootstrap"
+        skipped=$((skipped + 1))
+        skip_reasons+="  $node_name: pre-check failed after bootstrap"$'\n'
+        continue
+      }
+    fi
+
+    # Run pull-plan to classify changes
+    local plan
+    plan=$(cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pull-plan 2>/dev/null) || {
+      echo "  SKIP: pull-plan failed"
+      skipped=$((skipped + 1))
+      skip_reasons+="  $node_name: pull-plan failed"$'\n'
+      continue
+    }
+
+    local plan_count
+    plan_count=$(echo "$plan" | jq 'length')
+
+    if [[ "$plan_count" -eq 0 ]]; then
+      echo "  Already up to date."
+      synced=$((synced + 1))
+      synced_uuids+="$node_uuid"$'\n'
+      continue
+    fi
+
+    # Collect conflicts for reporting (AC-3)
+    local conflicts
+    conflicts=$(echo "$plan" | jq -r '.[] | select(.action == "conflict" or .action == "adopt-conflict" or .action == "new" or .action == "removed") | .file')
+    if [[ -n "$conflicts" ]]; then
+      all_conflicts+="  $node_name:"$'\n'
+      while IFS= read -r cfile; do
+        local caction
+        caction=$(echo "$plan" | jq -r --arg f "$cfile" '.[] | select(.file == $f) | .action')
+        all_conflicts+="    - $cfile ($caction)"$'\n'
+      done <<< "$conflicts"
+    fi
+
+    # Run deterministic phases: pull-auto (handles auto-update + adopt-clean)
+    local dry_flag=""
+    if $dry_run; then
+      dry_flag="--dry-run"
+    fi
+
+    local auto_count
+    auto_count=$(echo "$plan" | jq '[.[] | select(.action == "auto-update" or .action == "adopt-clean")] | length')
+    if [[ "$auto_count" -gt 0 ]]; then
+      echo "  Auto-updating $auto_count files..."
+      (cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pull-auto $dry_flag 2>&1) | sed 's/^/  /'
+    fi
+
+    # Run section-merges
+    local merge_files
+    merge_files=$(echo "$plan" | jq -r '.[] | select(.action == "section-merge") | .file')
+    if [[ -n "$merge_files" ]]; then
+      while IFS= read -r mfile; do
+        echo "  Section-merging: $mfile"
+        (cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pull-apply "$mfile" section-merge $dry_flag 2>&1) | sed 's/^/  /'
+      done <<< "$merge_files"
+    fi
+
+    # Finalize (commit changes, update version)
+    # In dry-run, pull-finalize may exit non-zero when no files changed (grep -v returns 1).
+    # Use || true to prevent pipefail from killing broadcast.
+    (cd "$node_path" && bash "$node_path/.ccanvil/scripts/ccanvil-sync.sh" pull-finalize $dry_flag 2>&1) | sed 's/^/  /' || true
+
+    synced=$((synced + 1))
+    synced_uuids+="$node_uuid"$'\n'
+
+  done < <(jq -r '.nodes | keys[]' "$registry")
+
+  # Batch-update registry after all nodes are processed.
+  # Doing this after the loop prevents registry.json modifications from
+  # dirtying the hub mid-broadcast (which would fail pre-check for later nodes).
+  if ! $dry_run && [[ -n "$synced_uuids" ]]; then
+    local sync_ts
+    sync_ts=$(timestamp)
+    while IFS= read -r su; do
+      [[ -z "$su" ]] && continue
+      local tmp; tmp=$(mktemp)
+      jq --arg u "$su" --arg t "$sync_ts" --arg v "$hub_version" \
+        '.nodes[$u].last_synced = $t | .nodes[$u].last_synced_version = $v' \
+        "$registry" > "$tmp" || true
+      if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
+        mv "$tmp" "$registry"
+      else
+        rm -f "$tmp"
+      fi
+    done <<< "$synced_uuids"
+
+    # Auto-commit the last_synced updates (AC-4, AC-7)
+    commit_hub_file "$hub_root" ".ccanvil/registry.json" \
+      "chore(registry): record broadcast sync @ $hub_version"
+  fi
+
+  # AC-9: Summary
+  echo ""
+  echo "=== Broadcast Summary ==="
+  echo "  Synced: $synced"
+  echo "  Skipped: $skipped"
+  echo "  Unreachable: $unreachable"
+
+  if [[ -n "$skip_reasons" ]]; then
+    echo ""
+    echo "Skip reasons:"
+    echo "$skip_reasons"
+  fi
+
+  if [[ -n "$all_conflicts" ]]; then
+    echo ""
+    echo "Conflicts pending (manual resolution needed):"
+    echo "$all_conflicts"
+  fi
+
+  if $dry_run; then
+    echo ""
+    echo "DRY-RUN: No files were modified in any node."
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Stack commands
+# ---------------------------------------------------------------------------
+
+cmd_pull_globals() {
+  local force=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=true; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  [[ -n "${HOME:-}" ]] || die "\$HOME is not set"
+
+  require_lockfile
+  local hub_path
+  hub_path=$(get_hub_source)
+  local src_dir="$hub_path/global-commands"
+  local dst_dir="$HOME/.claude/commands"
+
+  mkdir -p "$dst_dir"
+
+  local copied=0 skipped=0 conflicts=0
+
+  # Iterate only ccanvil-*.md — user namespace is sacrosanct (AC-6)
+  shopt -s nullglob
+  local src
+  for src in "$src_dir"/ccanvil-*.md; do
+    [[ -f "$src" ]] || continue
+    local name dst
+    name=$(basename "$src")
+    dst="$dst_dir/$name"
+
+    if [[ ! -f "$dst" ]]; then
+      cp "$src" "$dst"
+      copied=$((copied + 1))
+      continue
+    fi
+
+    local hub_h local_h
+    hub_h=$(file_hash "$src")
+    local_h=$(file_hash "$dst")
+
+    if [[ "$hub_h" == "$local_h" ]]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Hashes differ — conflict
+    if $force; then
+      cp "$src" "$dst"
+      copied=$((copied + 1))
+    else
+      echo "CONFLICT: $name (local differs from hub)" >&2
+      diff -u "$dst" "$src" >&2 || true
+      conflicts=$((conflicts + 1))
+    fi
+  done
+  shopt -u nullglob
+
+  jq -n --argjson c "$copied" --argjson s "$skipped" --argjson x "$conflicts" \
+    '{copied: $c, skipped: $s, conflicts: $x}'
+}
+
+cmd_stack_list() {
+  require_lockfile
+  local hub_path
+  hub_path=$(get_hub_source)
+  local stacks_dir="$hub_path/hub/stacks"
+
+  if [[ ! -d "$stacks_dir" ]]; then
+    echo "[]"
+    return 0
+  fi
+
+  local result="[]"
+  for manifest in "$stacks_dir"/*/manifest.json; do
+    [[ -f "$manifest" ]] || continue
+    local entry
+    entry=$(jq '{id: .id, description: .description, files: [.files[].target]}' "$manifest")
+    result=$(echo "$result" | jq --argjson e "$entry" '. + [$e]')
+  done
+  echo "$result"
+}
+
+cmd_stack_apply() {
+  local stack_id="${1:?Usage: ccanvil-sync.sh stack-apply <stack-id>}"
+  require_lockfile
+  local hub_path
+  hub_path=$(get_hub_source)
+  local stack_dir="$hub_path/hub/stacks/$stack_id"
+  local manifest="$stack_dir/manifest.json"
+
+  [[ -f "$manifest" ]] || die "Stack not found: $stack_id (no manifest at $manifest)"
+
+  local copied=0 skipped=0 errors=0
+
+  # --- File copy flow (AC-3) ---
+  local file_count
+  file_count=$(jq '.files | length' "$manifest")
+  for i in $(seq 0 $((file_count - 1))); do
+    local source target action
+    source=$(jq -r ".files[$i].source" "$manifest")
+    target=$(jq -r ".files[$i].target" "$manifest")
+    action=$(jq -r ".files[$i].action" "$manifest")
+
+    local source_path="$stack_dir/$source"
+    [[ -f "$source_path" ]] || { echo "WARNING: Missing source: $source" >&2; errors=$((errors + 1)); continue; }
+
+    case "$action" in
+      copy)
+        if [[ -f "$target" ]]; then
+          # Patch flow (AC-4): skip if local file was customized
+          local hub_h local_h
+          hub_h=$(file_hash "$source_path")
+          local_h=$(file_hash "$target")
+          local lock_hub_h
+          lock_hub_h=$(jq -r --arg f "$target" '.files[$f].hub_hash // empty' "$LOCKFILE" 2>/dev/null || true)
+          if [[ -n "$lock_hub_h" && "$local_h" != "$lock_hub_h" && "$hub_h" == "$lock_hub_h" ]]; then
+            # Local was customized and hub hasn't changed — skip
+            skipped=$((skipped + 1))
+            continue
+          elif [[ "$hub_h" == "$local_h" ]]; then
+            skipped=$((skipped + 1))
+            continue
+          fi
+        fi
+        mkdir -p "$(dirname "$target")"
+        cp "$source_path" "$target"
+        # Preserve executable bit
+        [[ -x "$source_path" ]] && chmod +x "$target"
+        copied=$((copied + 1))
+        ;;
+      *)
+        echo "WARNING: Unknown action '$action' for $source" >&2
+        errors=$((errors + 1))
+        continue
+        ;;
+    esac
+
+    # Update lockfile entry (AC-7)
+    local hub_h local_h
+    hub_h=$(file_hash "$source_path")
+    local_h=$(file_hash "$target")
+    bash "$0" lock-add "$target" "stack:$stack_id" "$hub_h" "$local_h" "clean"
+  done
+
+  # --- CLAUDE.md section merge (AC-3, AC-4) ---
+  local section_file
+  section_file=$(jq -r '.claudemd_section // empty' "$manifest")
+  if [[ -n "$section_file" && -f "$stack_dir/$section_file" ]]; then
+    local section_content
+    section_content=$(cat "$stack_dir/$section_file")
+    local start_marker="<!-- STACK:${stack_id}-START -->"
+    local end_marker="<!-- STACK:${stack_id}-END -->"
+
+    if [[ -f "CLAUDE.md" ]]; then
+      local section_tmp
+      section_tmp=$(mktemp)
+      echo "$section_content" > "$section_tmp"
+
+      if grep -q "$start_marker" "CLAUDE.md"; then
+        # Update existing section (idempotent)
+        local tmp
+        tmp=$(mktemp)
+        awk -v start="$start_marker" -v end="$end_marker" -v sfile="$section_tmp" '
+          $0 == start { while ((getline line < sfile) > 0) print line; close(sfile); skip=1; next }
+          $0 == end { skip=0; next }
+          !skip { print }
+        ' "CLAUDE.md" > "$tmp"
+        mv "$tmp" "CLAUDE.md"
+      elif grep -q '<!-- HUB-MANAGED-START -->' "CLAUDE.md"; then
+        # Insert above HUB-MANAGED-START
+        local tmp
+        tmp=$(mktemp)
+        awk -v marker="<!-- HUB-MANAGED-START -->" -v sfile="$section_tmp" '
+          $0 == marker { while ((getline line < sfile) > 0) print line; close(sfile); print ""; print $0; next }
+          { print }
+        ' "CLAUDE.md" > "$tmp"
+        mv "$tmp" "CLAUDE.md"
+      else
+        # Append to end
+        printf '\n' >> "CLAUDE.md"
+        cat "$section_tmp" >> "CLAUDE.md"
+      fi
+      rm -f "$section_tmp"
+    fi
+  fi
+
+  # --- settings.json hook merge (AC-3) ---
+  local hooks_file
+  hooks_file=$(jq -r '.settings_hooks // empty' "$manifest")
+  if [[ -n "$hooks_file" && -f "$stack_dir/$hooks_file" ]]; then
+    local settings_path=".claude/settings.json"
+    if [[ -f "$settings_path" ]]; then
+      local new_hook
+      new_hook=$(cat "$stack_dir/$hooks_file")
+      local new_matcher
+      new_matcher=$(echo "$new_hook" | jq -r '.matcher')
+      local new_commands
+      new_commands=$(echo "$new_hook" | jq '[.hooks[].command]')
+
+      # Check if matcher group exists
+      local tmp
+      tmp=$(mktemp)
+      local has_matcher
+      has_matcher=$(jq --arg m "$new_matcher" '[.hooks.PreToolUse[] | select(.matcher == $m)] | length' "$settings_path" 2>/dev/null || echo "0")
+
+      if [[ "$has_matcher" -gt 0 ]]; then
+        # Merge new hooks into existing matcher, dedup by command string
+        jq --arg m "$new_matcher" --argjson cmds "$new_commands" '
+          .hooks.PreToolUse = [.hooks.PreToolUse[] |
+            if .matcher == $m then
+              .hooks = (.hooks + [($cmds[] as $c | {"type":"command","command":$c})] | unique_by(.command))
+            else . end
+          ]
+        ' "$settings_path" > "$tmp"
+      else
+        # Add new matcher group
+        jq --argjson entry "$new_hook" '
+          .hooks.PreToolUse = (.hooks.PreToolUse // []) + [$entry]
+        ' "$settings_path" > "$tmp"
+      fi
+      if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
+        mv "$tmp" "$settings_path"
+      else
+        rm -f "$tmp"
+        echo "WARNING: settings.json merge produced invalid JSON" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  fi
+
+  # --- Update ccanvil.json (AC-3) ---
+  local ccanvil_json=".claude/ccanvil.json"
+  if [[ ! -f "$ccanvil_json" ]]; then
+    mkdir -p "$(dirname "$ccanvil_json")"
+    echo '{}' > "$ccanvil_json"
+  fi
+  local tmp
+  tmp=$(mktemp)
+  jq --arg s "$stack_id" '
+    .stacks = ((.stacks // []) | if index($s) then . else . + [$s] end)
+  ' "$ccanvil_json" > "$tmp"
+  if [[ -s "$tmp" ]] && jq empty "$tmp" 2>/dev/null; then
+    mv "$tmp" "$ccanvil_json"
+  else
+    rm -f "$tmp"
+    echo "WARNING: ccanvil.json update failed" >&2
+    errors=$((errors + 1))
+  fi
+
+  jq -n --argjson copied "$copied" --argjson skipped "$skipped" --argjson errors "$errors" \
+    '{"copied": $copied, "skipped": $skipped, "errors": $errors}'
 }
 
 # ---------------------------------------------------------------------------
@@ -1706,6 +2508,7 @@ case "${1:-}" in
   # --- Atomic commands (building blocks) ---
   init)             shift; cmd_init "$@" ;;
   status)           shift; cmd_status "$@" ;;
+  changelog)        cmd_changelog ;;
   diff)             shift; cmd_diff "${1:-}" ;;
   hash)             shift; cmd_hash "$@" ;;
   lock-get)         shift; cmd_lock_get "$@" ;;
@@ -1739,6 +2542,14 @@ case "${1:-}" in
   migrate)          shift; cmd_migrate "$@" ;;
   register)         cmd_register ;;
   registry)         cmd_registry ;;
+  broadcast)        shift; cmd_broadcast "$@" ;;
+
+  # --- Stack commands ---
+  stack-list)       cmd_stack_list ;;
+  stack-apply)      shift; cmd_stack_apply "$@" ;;
+
+  # --- Global commands sync ---
+  pull-globals)     shift; cmd_pull_globals "$@" ;;
 
   *)
     echo "Usage: ccanvil-sync.sh <command> [args]"
@@ -1759,14 +2570,23 @@ case "${1:-}" in
     echo "  push-finalize <commit-message>        Commit in hub and update version"
     echo "  promote <file>                        Full promote workflow"
     echo "  demote <file>                         Full demote workflow"
+    echo "  broadcast [--dry-run]                 Push hub updates to all registered nodes"
+    echo ""
+    echo "Stack commands (distribute tech stack profiles):"
+    echo "  stack-list                            List available stack profiles as JSON"
+    echo "  stack-apply <stack-id>                Apply a stack profile to the current project"
+    echo ""
+    echo "Global commands sync:"
+    echo "  pull-globals [--force]                Pull hub's ccanvil-* global commands to ~/.claude/commands/"
     echo ""
     echo "Init commands (use for project initialization):"
-    echo "  init-preflight <hub-path>             Scan for conflicts, output merge plan as JSON"
+    echo "  init-preflight <hub-path> [--stack id] Scan for conflicts, output merge plan as JSON"
     echo "  init-apply <hub-path> <plan-file>     Execute an approved merge plan"
     echo ""
     echo "Atomic commands (building blocks — prefer compound commands):"
     echo "  init [hub-path]                  Generate lockfile from current state"
     echo "  status                                Show file provenance and sync state"
+    echo "  changelog                             List hub commits since last sync (JSON)"
     echo "  diff [file]                           Show diff between local and hub"
     echo "  hash <file>                           Compute sha256 of a file"
     echo "  lock-get <file>                       Read a lockfile entry"
