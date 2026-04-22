@@ -45,3 +45,6 @@ next-env.d.ts
 .claude/local/
 .ccanvil/ccanvil.lock
 docs/checkpoint.md
+.ccanvil/ideas.log
+.ccanvil/ideas-pending.log
+docs/ideas.md

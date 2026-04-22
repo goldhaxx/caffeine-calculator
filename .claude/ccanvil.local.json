@@ -1,3 +1,14 @@
 {
-  "node_uuid": "4ee230a2-6454-4cbd-bbac-666ff0aac054"
+  "node_uuid": "4ee230a2-6454-4cbd-bbac-666ff0aac054",
+  "integrations": {
+    "routing": {
+      "idea": "linear"
+    },
+    "providers": {
+      "linear": {
+        "team": "Blocktech Solutions",
+        "project": "caffeine-calculator"
+      }
+    }
+  }
 }
