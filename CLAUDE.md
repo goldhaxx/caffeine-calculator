@@ -1,54 +1,47 @@
-# Caffeine Sleep Safety Calculator
+# ccanvil
 
-A scientifically validated web calculator for caffeine pharmacokinetics, sleep impact estimation, brew dosage calculation, and tolerance reset planning.
+Configuration preset hub for Claude Code — spec-driven development, deterministic-first automation, bi-directional sync between hub and downstream project nodes.
 
 ## Tech Stack
-- **Framework:** Next.js 16 (App Router) with React 19
-- **Language:** TypeScript (strict mode)
-- **Styling:** Tailwind CSS 4, shadcn/ui components, Framer Motion
-- **Charts:** Recharts
-- **Testing:** Vitest + Testing Library + jsdom
-- **Linting:** ESLint with next config
+- Runtime: Bash (preset automation scripts)
+- Testing: bats-core 1.13.0
+- Package Manager: Homebrew (brew install bats-core)
 
 ## Commands
 ```bash
-npm run dev          # Start dev server
-npm run build        # Production build (+ TypeScript checks)
-npm run lint         # Run ESLint
-npm test             # Run all tests (vitest run)
-npm run test:watch   # Watch mode
-npm run test:coverage # Coverage report
+bash .ccanvil/scripts/bats-report.sh --parallel           # Run full suite (parallel, ~75% faster)
+bats hub/tests/                                           # Run all tests (serial)
+bash .ccanvil/scripts/docs-check.sh activate <id>         # Activate spec → branch + draft PR
+bash .ccanvil/scripts/docs-check.sh complete <id>         # Complete spec → cleanup + PR ready
+bash .ccanvil/scripts/docs-check.sh land                  # Return to main after merge
+bash .ccanvil/scripts/docs-check.sh idea-add "text"       # Capture an idea
+bash .ccanvil/scripts/docs-check.sh radar-gather          # Project state JSON for /radar
+bash .ccanvil/scripts/context-budget.sh check --text      # Context budget
+bash .ccanvil/scripts/ccanvil-sync.sh stack-list          # List stack profiles
+bash .ccanvil/scripts/ccanvil-sync.sh stack-apply <id>    # Apply stack to project
+# Full command list: .ccanvil/guide/command-reference.md
 ```
 
 ## Architecture
 ```
-src/
-├── app/            # Next.js App Router (page.tsx, coffee/, tolerance/, references/)
-├── components/     # calculator/, coffee/, tolerance/, layout/, ui/
-└── lib/            # caffeine.ts, coffee-math.ts, tolerance.ts, beverage-data.ts, __tests__/
-research/           # Scientific validation reports
-releases/           # Release plans and notes
-docs/               # spec.md, plan.md, checkpoint.md
+.claude/                    # Rules, commands, agents, skills, hooks, settings
+.ccanvil/                   # Scripts, guide, templates — /init copies from here
+├── scripts/                # ccanvil-sync.sh, docs-check.sh, operations.sh
+├── guide/                  # Preset reference docs (12 section files)
+└── templates/              # Format guides, GitHub templates
+CLAUDE.md                   # Project template (node + hub-managed sections)
+hub/                        # Hub-only — NOT distributed
+├── stacks/                 # Tech stack profiles (fastapi-sqlite, etc.)
+├── tests/                  # bats-core test suite (12 .bats files)
+├── specs/                  # Completed spec archive
+└── meta/                   # SYSTEM_PROMPT.md, INIT_PROMPT.md
+docs/                       # Active feature lifecycle (branch-local)
+├── specs/                  # Per-feature spec archive (committed history)
+└── sessions/               # Per-session stasis archive (committed history — BTS-22)
 ```
 
-## Scientific Integrity
-All constants and claims are backed by peer-reviewed research. Sources cited inline and on `/references`.
-**When modifying any scientific constant:** (1) cite source, (2) update test with source comment, (3) update references page, (4) update `research/` if affected.
-
-## Project-Specific Testing
-- Tests in `__tests__/` directories alongside source (e.g., `src/lib/__tests__/caffeine.test.ts`)
-- Scientific constants must have tests verifying values with source paper comments
-- Component tests in `src/components/<area>/__tests__/`
-
-## Release Process
-Semver tracked in `releases/`. Plan in `releases/release-{version}-plan.md`, complete in `releases/release-{version}.md`. PATCH=fixes, MINOR=features, MAJOR=breaking model changes.
-
-## Conventions
-- `'use client'` on all interactive components
-- `@/` maps to `src/`
-- PascalCase component files; kebab-case lib modules
-- All scientific claims use `<Cite>` component
-- Prefer editing existing files over creating new ones
+## Fork Setup
+`.mcp.json.example` is a template for forks that want the project-scoped Linear MCP server. To activate: rename to `.mcp.json` and complete OAuth via `/mcp`. Contributors who already have Linear wired up via their claude.ai account (`claude.ai Linear`) don't need this — it's a convenience for fresh clones.
 
 <!-- HUB-MANAGED-START -->
 <!-- Everything above is project-specific (name, stack, commands, architecture). -->
