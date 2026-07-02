@@ -185,34 +185,41 @@ export function calculateSafeSleepWindows(consumptions: Consumption[], halfLife:
     return windows;
 }
 
+export interface DecayChartPoint {
+    timeStr: string;
+    remaining: number;
+    hourOffset: number;
+    actualTime: Date;
+    dayIndex: number;
+}
+
 /**
- * Generates decay chart data over 24 hours
+ * Generates decay chart data over a 1-N day horizon in 30-min steps.
+ * Continuous decay — no clipping at the 24h boundary. With repeatDaily,
+ * the day-0 schedule recurs every 24h so accumulation is visible.
  */
-export function generateDecayChartData(consumptions: Consumption[], halfLife: number) {
+export function generateDecayChartData(
+    consumptions: Consumption[],
+    halfLife: number,
+    options: DecayChartOptions = {}
+): DecayChartPoint[] {
     if (consumptions.length === 0) return [];
 
-    const baseDate = new Date();
-    baseDate.setHours(0, 0, 0, 0);
+    const { days = 1 } = options;
+    const { originDate, doses } = buildDoseTimeline(consumptions, options);
 
-    const earliestCons = consumptions.reduce((earliest, current) => {
-        return (current.time < earliest.time) ? current : earliest;
-    });
+    const data: DecayChartPoint[] = [];
 
-    const startDt = timeToDate(earliestCons.time, baseDate);
-    startDt.setMinutes(0, 0, 0);
-
-    const data = [];
-
-    for (let i = 0; i <= 24 * 2; i++) { // 24 hours, 30 min steps
-        const currentDt = addMinutes(startDt, i * 30);
-        const timeStr = format(currentDt, 'HH:mm');
-        const remaining = calculateRemainingAtTime(consumptions, timeStr, halfLife);
+    for (let i = 0; i <= days * 48; i++) { // 30 min steps
+        const hourOffset = i * 0.5;
+        const currentDt = addMinutes(originDate, i * 30);
 
         data.push({
-            timeStr,
-            remaining,
-            hourOffset: i * 0.5,
-            actualTime: currentDt
+            timeStr: format(currentDt, 'HH:mm'),
+            remaining: calculateRemainingAtOffset(doses, hourOffset, halfLife),
+            hourOffset,
+            actualTime: currentDt,
+            dayIndex: Math.floor(hourOffset / 24),
         });
     }
 
