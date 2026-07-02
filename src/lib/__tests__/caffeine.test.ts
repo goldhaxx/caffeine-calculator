@@ -3,6 +3,7 @@ import {
   calculateRemainingAtTime,
   calculateRemainingAtOffset,
   buildDoseTimeline,
+  calculateSteadyStateBaseline,
   calculateSafeSleepWindows,
   generateDecayChartData,
   METABOLISM_HALF_LIVES,
@@ -195,6 +196,49 @@ describe('caffeine pharmacokinetic model', () => {
       const { doses } = buildDoseTimeline(consumptions, { days: 2, repeatDaily: true });
       expect(doses.map((d) => d.hourOffset)).toEqual([0, 5, 24, 29]);
       expect(doses.map((d) => d.mg)).toEqual([100, 50, 100, 50]);
+    });
+  });
+
+  describe('calculateSteadyStateBaseline', () => {
+    it('should return null for empty consumptions', () => {
+      expect(calculateSteadyStateBaseline([], 5)).toBeNull();
+    });
+
+    it('should compute the converged trough and peak for a single daily dose (AC-4)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const result = calculateSteadyStateBaseline(consumptions, 5)!;
+      // f = 0.5^(24/5) ≈ 0.03587; trough = 150 * f/(1-f) ≈ 5.58
+      expect(result.troughMg).toBeCloseTo(5.6, 1);
+      // peak = trough + 150 ≈ 155.6
+      expect(result.peakMg).toBeCloseTo(155.6, 1);
+    });
+
+    it('should show a much higher baseline for slow metabolizers (AC-4)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const result = calculateSteadyStateBaseline(consumptions, 8)!;
+      // f = 0.5^(24/8) = 0.125; trough = 150 * 0.125/0.875 ≈ 21.4
+      expect(result.troughMg).toBeCloseTo(21.4, 1);
+    });
+
+    it('should sum per-dose geometric contributions for multi-dose schedules (AC-4)', () => {
+      const consumptions: Consumption[] = [
+        { id: '1', time: '07:00', mg: 150 },
+        { id: '2', time: '13:00', mg: 50 },
+      ];
+      const result = calculateSteadyStateBaseline(consumptions, 5)!;
+      // trough sits just before the 07:00 dose:
+      // (150*0.5^(24/5) + 50*0.5^(18/5)) / (1 - 0.5^(24/5)) ≈ 9.86
+      const f = Math.pow(0.5, 24 / 5);
+      const expected = (150 * f + 50 * Math.pow(0.5, 18 / 5)) / (1 - f);
+      expect(result.troughMg).toBeCloseTo(expected, 1);
+    });
+
+    it('should report days to reach 99% of the asymptote (AC-5)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      // k = ceil(ln(0.01)/ln(f)): 3h → 1, 5h → 2, 8h → 3
+      expect(calculateSteadyStateBaseline(consumptions, 3)!.daysToSteadyState).toBe(1);
+      expect(calculateSteadyStateBaseline(consumptions, 5)!.daysToSteadyState).toBe(2);
+      expect(calculateSteadyStateBaseline(consumptions, 8)!.daysToSteadyState).toBe(3);
     });
   });
 
