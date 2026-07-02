@@ -185,6 +185,57 @@ export function calculateSafeSleepWindows(consumptions: Consumption[], halfLife:
     return windows;
 }
 
+export interface SteadyStateBaseline {
+    troughMg: number;
+    peakMg: number;
+    daysToSteadyState: number;
+}
+
+/**
+ * Closed-form steady state for a daily-repeating schedule.
+ * Each dose contributes mg · 2^(−Δ/h) · Σf^k = mg · 2^(−Δ/h) / (1−f),
+ * with f = 2^(−24/h). Decay is monotone between doses, so the trough
+ * sits just before a dose and the peak just after one — no simulation.
+ */
+export function calculateSteadyStateBaseline(
+    consumptions: Consumption[],
+    halfLife: number
+): SteadyStateBaseline | null {
+    if (consumptions.length === 0) return null;
+
+    const f = Math.pow(0.5, 24 / halfLife);
+    const geometricSum = 1 / (1 - f);
+
+    const doseHours = consumptions.map((cons) => {
+        const [hours, minutes] = cons.time.split(':').map(Number);
+        return { hour: hours + minutes / 60.0, mg: cons.mg };
+    });
+
+    // steady-state level just before in-day hour t
+    const levelJustBefore = (t: number): number =>
+        doseHours.reduce((sum, dose) => {
+            let elapsed = (t - dose.hour) % 24;
+            if (elapsed <= 0) elapsed += 24; // a dose at exactly t last fired 24h ago
+            return sum + dose.mg * Math.pow(0.5, elapsed / halfLife) * geometricSum;
+        }, 0);
+
+    let troughMg = Infinity;
+    let peakMg = -Infinity;
+
+    for (const hour of new Set(doseHours.map((d) => d.hour))) {
+        const before = levelJustBefore(hour);
+        const doseAtInstant = doseHours
+            .filter((d) => d.hour === hour)
+            .reduce((sum, d) => sum + d.mg, 0);
+        troughMg = Math.min(troughMg, before);
+        peakMg = Math.max(peakMg, before + doseAtInstant);
+    }
+
+    const daysToSteadyState = Math.ceil(Math.log(0.01) / Math.log(f));
+
+    return { troughMg, peakMg, daysToSteadyState };
+}
+
 export interface DecayChartPoint {
     timeStr: string;
     remaining: number;
