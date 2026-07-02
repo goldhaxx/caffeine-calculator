@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateRemainingAtTime,
+  calculateRemainingAtOffset,
   calculateSafeSleepWindows,
   generateDecayChartData,
   METABOLISM_HALF_LIVES,
   SENSITIVITY_THRESHOLDS,
   Consumption,
+  DoseEvent,
 } from '../caffeine';
 
 describe('caffeine pharmacokinetic model', () => {
@@ -119,6 +121,40 @@ describe('caffeine pharmacokinetic model', () => {
       expect(windows!.sensitive).toBeTruthy();
       expect(windows!.average).toBeTruthy();
       expect(windows!.tolerant).toBeTruthy();
+    });
+  });
+
+  describe('calculateRemainingAtOffset', () => {
+    it('should return 0 for empty doses', () => {
+      expect(calculateRemainingAtOffset([], 10, 5)).toBe(0);
+    });
+
+    it('should decay continuously through the 24h boundary', () => {
+      const doses: DoseEvent[] = [{ hourOffset: 0, mg: 150 }];
+      // 150 * 0.5^(24/5) = 150 * 0.03587 ≈ 5.38 — NOT clipped to 0 at 24h
+      expect(calculateRemainingAtOffset(doses, 24, 5)).toBeCloseTo(5.38, 1);
+    });
+
+    it('should keep decaying past 24h', () => {
+      const doses: DoseEvent[] = [{ hourOffset: 0, mg: 150 }];
+      // 150 * 0.5^(48/5) = 150 * 0.00129 ≈ 0.193
+      expect(calculateRemainingAtOffset(doses, 48, 5)).toBeCloseTo(0.193, 2);
+    });
+
+    it('should read just-before-dose at the dose instant (elapsed > 0 convention)', () => {
+      const doses: DoseEvent[] = [{ hourOffset: 0, mg: 150 }];
+      expect(calculateRemainingAtOffset(doses, 0, 5)).toBe(0);
+    });
+
+    it('should sum multiple doses across days', () => {
+      const doses: DoseEvent[] = [
+        { hourOffset: 0, mg: 150 },
+        { hourOffset: 24, mg: 150 },
+      ];
+      // At hour 24: yesterday's dose 150 * 0.5^(24/5) ≈ 5.38; today's dose elapsed 0 → excluded
+      expect(calculateRemainingAtOffset(doses, 24, 5)).toBeCloseTo(5.38, 1);
+      // At hour 31: 150 * 0.5^(31/5) + 150 * 0.5^(7/5) ≈ 2.04 + 56.84 ≈ 58.88
+      expect(calculateRemainingAtOffset(doses, 31, 5)).toBeCloseTo(58.88, 1);
     });
   });
 
