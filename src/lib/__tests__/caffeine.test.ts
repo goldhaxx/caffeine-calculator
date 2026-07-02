@@ -209,6 +209,48 @@ describe('caffeine pharmacokinetic model', () => {
       expect(data.length).toBe(49); // 0 to 24 hours inclusive at 30-min intervals
     });
 
+    it('should show the true 24h residual at the final point, not 0 (AC-1)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const data = generateDecayChartData(consumptions, 5);
+      const last = data[data.length - 1];
+      expect(last.hourOffset).toBe(24);
+      // 150 * 0.5^(24/5) ≈ 5.4mg still circulating at the 24h mark
+      expect(last.remaining).toBeCloseTo(5.4, 1);
+    });
+
+    it('should extend continuously across a multi-day horizon without repeat (AC-2)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const data = generateDecayChartData(consumptions, 5, { days: 3 });
+      expect(data.length).toBe(3 * 48 + 1);
+      // 150 * 0.5^(48/5) ≈ 0.19mg at hour 48 — still nonzero
+      const at48 = data.find((d) => d.hourOffset === 48)!;
+      expect(at48.remaining).toBeCloseTo(0.19, 1);
+      expect(at48.remaining).toBeGreaterThan(0);
+      // day indices track 24h cycles from the origin
+      expect(data.find((d) => d.hourOffset === 23.5)!.dayIndex).toBe(0);
+      expect(data.find((d) => d.hourOffset === 25)!.dayIndex).toBe(1);
+      // no discontinuity at any 24h boundary: monotonically non-increasing after the peak
+      const peakIndex = data.findIndex((d) => d.remaining > 0);
+      for (let i = peakIndex + 1; i < data.length; i++) {
+        expect(data[i].remaining).toBeLessThanOrEqual(data[i - 1].remaining);
+      }
+    });
+
+    it('should accumulate day-over-day to the steady-state trough with repeat ON (AC-3)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const data = generateDecayChartData(consumptions, 5, { days: 7, repeatDaily: true });
+      // pre-dose troughs sit at each 24h boundary (just-before-dose convention)
+      const troughs = [1, 2, 3, 4, 5, 6].map(
+        (k) => data.find((d) => d.hourOffset === 24 * k)!.remaining
+      );
+      for (let i = 1; i < troughs.length; i++) {
+        expect(troughs[i]).toBeGreaterThan(troughs[i - 1]);
+      }
+      // converges to dose * f/(1-f) = 150 * 0.03587/0.96413 ≈ 5.58
+      const f = Math.pow(0.5, 24 / 5);
+      expect(troughs[troughs.length - 1]).toBeCloseTo((150 * f) / (1 - f), 1);
+    });
+
     it('should show monotonically decreasing caffeine after consumption', () => {
       const consumptions: Consumption[] = [{ id: '1', time: '08:00', mg: 100 }];
       const data = generateDecayChartData(consumptions, 5);
