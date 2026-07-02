@@ -295,6 +295,28 @@ describe('caffeine pharmacokinetic model', () => {
       expect(troughs[troughs.length - 1]).toBeCloseTo((150 * f) / (1 - f), 1);
     });
 
+    it('should return empty chart data for every option combination when there are no consumptions (AC-7)', () => {
+      expect(generateDecayChartData([], 5)).toEqual([]);
+      expect(generateDecayChartData([], 5, { days: 7 })).toEqual([]);
+      expect(generateDecayChartData([], 5, { days: 7, repeatDaily: true })).toEqual([]);
+    });
+
+    it('should let a 0mg dose contribute nothing without perturbing the baseline (AC-7)', () => {
+      const withZero: Consumption[] = [
+        { id: '1', time: '07:00', mg: 150 },
+        { id: '2', time: '10:00', mg: 0 },
+      ];
+      const without: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const options = { days: 2, repeatDaily: true };
+      expect(generateDecayChartData(withZero, 5, options).map((d) => d.remaining)).toEqual(
+        generateDecayChartData(without, 5, options).map((d) => d.remaining)
+      );
+      const baseline = calculateSteadyStateBaseline(withZero, 5)!;
+      const baselineWithout = calculateSteadyStateBaseline(without, 5)!;
+      expect(baseline.troughMg).toBeCloseTo(baselineWithout.troughMg, 6);
+      expect(baseline.peakMg).toBeCloseTo(baselineWithout.peakMg, 6);
+    });
+
     it('should show monotonically decreasing caffeine after consumption', () => {
       const consumptions: Consumption[] = [{ id: '1', time: '08:00', mg: 100 }];
       const data = generateDecayChartData(consumptions, 5);
