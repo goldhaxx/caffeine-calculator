@@ -1,4 +1,4 @@
-import { addDays, addMinutes, differenceInMinutes, parse, format } from 'date-fns';
+import { addDays, addMinutes, differenceInCalendarDays, differenceInMinutes, parse, format } from 'date-fns';
 
 export interface Consumption {
     id: string;
@@ -183,6 +183,21 @@ export function calculateSafeSleepWindows(consumptions: Consumption[], halfLife:
     }
 
     return windows;
+}
+
+/**
+ * Chart label for an hour offset from the timeline origin.
+ * Day 1 renders as a bare time; later calendar days get a "Day N" prefix.
+ */
+export function formatHourOffsetLabel(
+    originDate: Date,
+    hourOffset: number,
+    style: 'tick' | 'tooltip' = 'tick'
+): string {
+    const actual = addMinutes(originDate, Math.round(hourOffset * 60));
+    const time = format(actual, style === 'tooltip' ? 'h:mm a' : 'ha');
+    const dayNumber = differenceInCalendarDays(actual, originDate) + 1;
+    return dayNumber <= 1 ? time : `Day ${dayNumber} · ${time}`;
 }
 
 export interface SteadyStateBaseline {
