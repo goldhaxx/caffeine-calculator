@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateRemainingAtTime,
   calculateRemainingAtOffset,
+  buildDoseTimeline,
   calculateSafeSleepWindows,
   generateDecayChartData,
   METABOLISM_HALF_LIVES,
@@ -155,6 +156,45 @@ describe('caffeine pharmacokinetic model', () => {
       expect(calculateRemainingAtOffset(doses, 24, 5)).toBeCloseTo(5.38, 1);
       // At hour 31: 150 * 0.5^(31/5) + 150 * 0.5^(7/5) ≈ 2.04 + 56.84 ≈ 58.88
       expect(calculateRemainingAtOffset(doses, 31, 5)).toBeCloseTo(58.88, 1);
+    });
+  });
+
+  describe('buildDoseTimeline', () => {
+    it('should return empty doses for no consumptions', () => {
+      const { doses } = buildDoseTimeline([], { days: 3, repeatDaily: true });
+      expect(doses).toEqual([]);
+    });
+
+    it('should anchor the origin at the earliest consumption floored to the hour', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:30', mg: 150 }];
+      const { originDate, doses } = buildDoseTimeline(consumptions);
+      expect(originDate.getHours()).toBe(7);
+      expect(originDate.getMinutes()).toBe(0);
+      // 07:30 dose sits half an hour past the 07:00 origin
+      expect(doses).toEqual([{ hourOffset: 0.5, mg: 150 }]);
+    });
+
+    it('should replicate the day-0 schedule across days when repeating', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const { doses } = buildDoseTimeline(consumptions, { days: 3, repeatDaily: true });
+      expect(doses.map((d) => d.hourOffset)).toEqual([0, 24, 48]);
+      expect(doses.every((d) => d.mg === 150)).toBe(true);
+    });
+
+    it('should not replicate when repeatDaily is false', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const { doses } = buildDoseTimeline(consumptions, { days: 3 });
+      expect(doses.map((d) => d.hourOffset)).toEqual([0]);
+    });
+
+    it('should order doses chronologically within each repeated day', () => {
+      const consumptions: Consumption[] = [
+        { id: '2', time: '13:00', mg: 50 },
+        { id: '1', time: '08:00', mg: 100 },
+      ];
+      const { doses } = buildDoseTimeline(consumptions, { days: 2, repeatDaily: true });
+      expect(doses.map((d) => d.hourOffset)).toEqual([0, 5, 24, 29]);
+      expect(doses.map((d) => d.mg)).toEqual([100, 50, 100, 50]);
     });
   });
 
