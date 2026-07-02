@@ -4,6 +4,7 @@ import {
   calculateRemainingAtOffset,
   buildDoseTimeline,
   calculateSteadyStateBaseline,
+  formatHourOffsetLabel,
   calculateSafeSleepWindows,
   generateDecayChartData,
   METABOLISM_HALF_LIVES,
@@ -97,6 +98,29 @@ describe('caffeine pharmacokinetic model', () => {
       const remaining = calculateRemainingAtTime(consumptions, '06:00', 5);
       // 100 * 0.5^(8/5) = 100 * 0.33 ≈ 33
       expect(remaining).toBeCloseTo(33, 0);
+    });
+  });
+
+  describe('formatHourOffsetLabel', () => {
+    const origin = new Date(2026, 0, 5, 7, 0, 0, 0); // Jan 5, 07:00 local
+
+    it('should format day-1 ticks as bare times', () => {
+      expect(formatHourOffsetLabel(origin, 0)).toBe('7AM');
+      expect(formatHourOffsetLabel(origin, 8)).toBe('3PM');
+    });
+
+    it('should prefix later days with the day number', () => {
+      expect(formatHourOffsetLabel(origin, 26)).toBe('Day 2 · 9AM');
+      expect(formatHourOffsetLabel(origin, 48)).toBe('Day 3 · 7AM');
+    });
+
+    it('should roll the day number at calendar midnight', () => {
+      expect(formatHourOffsetLabel(origin, 17)).toBe('Day 2 · 12AM');
+    });
+
+    it('should include minutes in tooltip style', () => {
+      expect(formatHourOffsetLabel(origin, 0.5, 'tooltip')).toBe('7:30 AM');
+      expect(formatHourOffsetLabel(origin, 24, 'tooltip')).toBe('Day 2 · 7:00 AM');
     });
   });
 
