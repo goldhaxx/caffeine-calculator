@@ -54,6 +54,58 @@ export function timeToDate(timeStr: string, baseDate: Date = new Date()): Date {
     return d;
 }
 
+export interface DecayChartOptions {
+    days?: number;         // simulation horizon in days (default 1)
+    repeatDaily?: boolean; // replicate the day-0 schedule every 24h (default false)
+}
+
+export interface DoseTimeline {
+    originDate: Date;
+    doses: DoseEvent[];
+}
+
+/**
+ * Expands a daily consumption schedule into continuous dose events.
+ * Origin = earliest consumption floored to the hour (chart anchor).
+ */
+export function buildDoseTimeline(
+    consumptions: Consumption[],
+    options: DecayChartOptions = {}
+): DoseTimeline {
+    const { days = 1, repeatDaily = false } = options;
+
+    const baseDate = new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
+    if (consumptions.length === 0) {
+        return { originDate: baseDate, doses: [] };
+    }
+
+    const earliestCons = consumptions.reduce((earliest, current) => {
+        return (current.time < earliest.time) ? current : earliest;
+    });
+
+    const originDate = timeToDate(earliestCons.time, baseDate);
+    originDate.setMinutes(0, 0, 0);
+
+    const dayZero: DoseEvent[] = consumptions
+        .map((cons) => ({
+            hourOffset: differenceInMinutes(timeToDate(cons.time, baseDate), originDate) / 60.0,
+            mg: cons.mg,
+        }))
+        .sort((a, b) => a.hourOffset - b.hourOffset);
+
+    const repeats = repeatDaily ? days : 1;
+    const doses: DoseEvent[] = [];
+    for (let day = 0; day < repeats; day++) {
+        for (const dose of dayZero) {
+            doses.push({ hourOffset: dose.hourOffset + 24 * day, mg: dose.mg });
+        }
+    }
+
+    return { originDate, doses };
+}
+
 /**
  * Calculates the amount of caffeine remaining in the body at a given target time.
  */
