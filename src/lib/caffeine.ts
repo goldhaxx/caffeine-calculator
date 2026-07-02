@@ -22,6 +22,31 @@ export const SENSITIVITY_THRESHOLDS = {
 
 export type SensitivityType = keyof typeof SENSITIVITY_THRESHOLDS;
 
+export interface DoseEvent {
+    hourOffset: number; // hours since the timeline origin
+    mg: number;
+}
+
+/**
+ * Continuous-time decay: remaining caffeine at an hour offset from the
+ * timeline origin. No time-of-day wrapping — offsets past 24h keep decaying.
+ * A sample at exactly a dose instant reads just-before-dose (elapsed > 0).
+ */
+export function calculateRemainingAtOffset(
+    doses: DoseEvent[],
+    targetHour: number,
+    halfLife: number
+): number {
+    let total = 0;
+    for (const dose of doses) {
+        const elapsed = targetHour - dose.hourOffset;
+        if (elapsed > 0) {
+            total += dose.mg * Math.pow(0.5, elapsed / halfLife);
+        }
+    }
+    return total;
+}
+
 export function timeToDate(timeStr: string, baseDate: Date = new Date()): Date {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const d = new Date(baseDate);
