@@ -258,9 +258,11 @@ export interface BaselineRampDay {
 }
 
 /**
- * Day-over-day ramp of the pre-dose trough when today's intake repeats
- * daily. Every dose's geometric series truncates identically after k days,
- * so trough(k) = steady-state trough × (1 − f^k), f = 2^(−24/h).
+ * Day-over-day ramp of the daily floor when today's intake repeats daily.
+ * Exact: decay is monotone between doses, so the day-k minimum sits
+ * just-before a dose instant in (24(k−1), 24k] or at the cycle end 24k.
+ * (A closed-form asymptote·(1−f^k) only holds when the steady-state trough
+ * precedes the earliest dose — later doses have fired k−1 times, not k.)
  */
 export function calculateBaselineRampUp(
     consumptions: Consumption[],
@@ -270,15 +272,24 @@ export function calculateBaselineRampUp(
     const steadyState = calculateSteadyStateBaseline(consumptions, halfLife);
     if (!steadyState) return [];
 
-    const f = Math.pow(0.5, 24 / halfLife);
+    const { doses } = buildDoseTimeline(consumptions, { days, repeatDaily: true });
+    const dayZeroOffsets = [...new Set(
+        doses.filter((dose) => dose.hourOffset < 24).map((dose) => dose.hourOffset)
+    )];
 
     return Array.from({ length: days }, (_, index) => {
         const day = index + 1;
-        const convergence = 1 - Math.pow(f, day);
+        const sampleOffsets = [
+            ...dayZeroOffsets.filter((offset) => offset > 0).map((offset) => offset + 24 * (day - 1)),
+            24 * day,
+        ];
+        const troughMg = Math.min(
+            ...sampleOffsets.map((offset) => calculateRemainingAtOffset(doses, offset, halfLife))
+        );
         return {
             day,
-            troughMg: steadyState.troughMg * convergence,
-            percentOfSteadyState: convergence * 100,
+            troughMg,
+            percentOfSteadyState: (troughMg / steadyState.troughMg) * 100,
         };
     });
 }
