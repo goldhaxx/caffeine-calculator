@@ -4,7 +4,7 @@
 > Work: linear:BTS-711
 > Created: 1783029892
 > Subject: Multi-Day Decay & Steady-State Baseline
-> Status: In Progress
+> Status: Complete
 
 ## Summary
 
