@@ -7,6 +7,7 @@ import {
   calculateBaselineRampUp,
   computeBedtimeOffsets,
   computeChartTicks,
+  summarizeSteadyStateMath,
   formatHourOffsetLabel,
   calculateSafeSleepWindows,
   generateDecayChartData,
@@ -282,6 +283,48 @@ describe('caffeine pharmacokinetic model', () => {
       const origin = new Date(2026, 0, 5, 7, 0, 0, 0);
       expect(formatHourOffsetLabel(origin, NaN)).toBe('');
       expect(formatHourOffsetLabel(origin, Infinity)).toBe('');
+    });
+  });
+
+  describe('summarizeSteadyStateMath', () => {
+    const cons: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+
+    it('should report metabolism-dependent elimination percentages (AC-12)', () => {
+      // elimination over 24h = (1 − 2^(−24/h))·100 — tied to the selected half-life
+      expect(summarizeSteadyStateMath(cons, 5)!.eliminationPct).toBeCloseTo(96.4, 1);
+      expect(summarizeSteadyStateMath(cons, 8)!.eliminationPct).toBeCloseTo(87.5, 1);
+      expect(summarizeSteadyStateMath(cons, 3)!.eliminationPct).toBeCloseTo(99.6, 1);
+      // retention is the complement
+      expect(summarizeSteadyStateMath(cons, 5)!.retentionPct).toBeCloseTo(3.6, 1);
+    });
+
+    it('should expose the intake-equals-elimination fixed point with live numbers (AC-12)', () => {
+      const summary = summarizeSteadyStateMath(cons, 5)!;
+      expect(summary.dailyIntakeMg).toBe(150);
+      expect(summary.doseCount).toBe(1);
+      // floor = D·f/(1−f); post-dose = D/(1−f) — the level where daily
+      // elimination exactly equals daily intake (Zach's napkin: 104.17mg at 4%)
+      expect(summary.floorMg).toBeCloseTo(5.6, 1);
+      expect(summary.postDoseMg).toBeCloseTo(155.6, 1);
+      expect(summary.postDoseMg * (summary.eliminationPct / 100)).toBeCloseTo(150, 0);
+      expect(summary.daysToSteadyState).toBe(2);
+    });
+
+    it('should count only valid caffeinated doses toward daily intake (AC-12)', () => {
+      const mixed: Consumption[] = [
+        { id: '1', time: '07:00', mg: 150 },
+        { id: '2', time: 'bogus', mg: 500 },
+        { id: '3', time: '13:00', mg: 50 },
+      ];
+      const summary = summarizeSteadyStateMath(mixed, 5)!;
+      expect(summary.dailyIntakeMg).toBe(200);
+      expect(summary.doseCount).toBe(2);
+    });
+
+    it('should return null for empty, decaf, or invalid inputs (AC-12)', () => {
+      expect(summarizeSteadyStateMath([], 5)).toBeNull();
+      expect(summarizeSteadyStateMath([{ id: '1', time: '09:00', mg: 0 }], 5)).toBeNull();
+      expect(summarizeSteadyStateMath(cons, NaN)).toBeNull();
     });
   });
 
