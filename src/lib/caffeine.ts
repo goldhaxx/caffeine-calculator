@@ -1,4 +1,4 @@
-import { addDays, addMinutes, differenceInCalendarDays, differenceInMinutes, parse, format } from 'date-fns';
+import { addDays, addMinutes, differenceInCalendarDays, differenceInMinutes, format } from 'date-fns';
 
 export interface Consumption {
     id: string;
@@ -119,11 +119,11 @@ export function calculateRemainingAtTime(
     const baseDate = new Date();
     baseDate.setHours(0, 0, 0, 0);
 
-    let targetDt = timeToDate(targetTimeStr, baseDate);
+    const targetDt = timeToDate(targetTimeStr, baseDate);
     let totalRemaining = 0;
 
     for (const cons of consumptions) {
-        let consDt = timeToDate(cons.time, baseDate);
+        const consDt = timeToDate(cons.time, baseDate);
 
         // If target time is before consumption time (e.g., cons at 22:00, target at 08:00)
         // assume target is on the next day
