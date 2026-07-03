@@ -1,4 +1,4 @@
-import { addDays, addMinutes, differenceInCalendarDays, differenceInMinutes, format } from 'date-fns';
+import { addDays, addMinutes, differenceInMinutes, format } from 'date-fns';
 
 export interface Consumption {
     id: string;
@@ -37,6 +37,7 @@ export function calculateRemainingAtOffset(
     targetHour: number,
     halfLife: number
 ): number {
+    if (!Number.isFinite(halfLife) || halfLife <= 0) return 0;
     let total = 0;
     for (const dose of doses) {
         const elapsed = targetHour - dose.hourOffset;
@@ -52,6 +53,20 @@ export function timeToDate(timeStr: string, baseDate: Date = new Date()): Date {
     const d = new Date(baseDate);
     d.setHours(hours, minutes, 0, 0);
     return d;
+}
+
+/**
+ * Parses a 'HH:mm' string into fractional in-day hours.
+ * Returns null for anything malformed — callers treat those doses as absent
+ * so junk from localStorage or a cleared time input can't poison the math.
+ */
+export function parseTimeToHours(timeStr: string): number | null {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(timeStr);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return hours + minutes / 60.0;
 }
 
 export interface DecayChartOptions {
@@ -77,29 +92,25 @@ export function buildDoseTimeline(
     const baseDate = new Date();
     baseDate.setHours(0, 0, 0, 0);
 
-    if (consumptions.length === 0) {
+    const validDoses = (Array.isArray(consumptions) ? consumptions : [])
+        .map((cons) => ({ hour: parseTimeToHours(cons.time), mg: cons.mg }))
+        .filter((dose): dose is { hour: number; mg: number } => dose.hour !== null)
+        .sort((a, b) => a.hour - b.hour);
+
+    if (validDoses.length === 0) {
         return { originDate: baseDate, doses: [] };
     }
 
-    const earliestCons = consumptions.reduce((earliest, current) => {
-        return (current.time < earliest.time) ? current : earliest;
-    });
+    const originHour = Math.floor(validDoses[0].hour);
+    const originDate = new Date(baseDate);
+    originDate.setHours(originHour, 0, 0, 0);
 
-    const originDate = timeToDate(earliestCons.time, baseDate);
-    originDate.setMinutes(0, 0, 0);
-
-    const dayZero: DoseEvent[] = consumptions
-        .map((cons) => ({
-            hourOffset: differenceInMinutes(timeToDate(cons.time, baseDate), originDate) / 60.0,
-            mg: cons.mg,
-        }))
-        .sort((a, b) => a.hourOffset - b.hourOffset);
-
-    const repeats = repeatDaily ? days : 1;
+    // repeating must never drop the day-0 schedule, even for a degenerate horizon
+    const repeats = repeatDaily ? Math.max(1, days) : 1;
     const doses: DoseEvent[] = [];
     for (let day = 0; day < repeats; day++) {
-        for (const dose of dayZero) {
-            doses.push({ hourOffset: dose.hourOffset + 24 * day, mg: dose.mg });
+        for (const dose of validDoses) {
+            doses.push({ hourOffset: dose.hour - originHour + 24 * day, mg: dose.mg });
         }
     }
 
@@ -114,7 +125,7 @@ export function calculateRemainingAtTime(
     targetTimeStr: string,
     halfLife: number
 ): number {
-    if (consumptions.length === 0) return 0;
+    if (!Array.isArray(consumptions) || consumptions.length === 0) return 0;
 
     const baseDate = new Date();
     baseDate.setHours(0, 0, 0, 0);
@@ -147,7 +158,7 @@ export function calculateRemainingAtTime(
  * Calculates safe sleep windows based on latest consumption.
  */
 export function calculateSafeSleepWindows(consumptions: Consumption[], halfLife: number) {
-    if (consumptions.length === 0) return null;
+    if (!Array.isArray(consumptions) || consumptions.length === 0) return null;
 
     const baseDate = new Date();
     baseDate.setHours(0, 0, 0, 0);
@@ -194,10 +205,41 @@ export function formatHourOffsetLabel(
     hourOffset: number,
     style: 'tick' | 'tooltip' = 'tick'
 ): string {
+    if (!Number.isFinite(hourOffset)) return '';
     const actual = addMinutes(originDate, Math.round(hourOffset * 60));
     const time = format(actual, style === 'tooltip' ? 'h:mm a' : 'ha');
-    const dayNumber = differenceInCalendarDays(actual, originDate) + 1;
+    // days are 24h dose cycles from the origin — consistent with the trough
+    // instants and the ramp card, so a 1-day chart never labels "Day 2"
+    const dayNumber = Math.floor(hourOffset / 24) + 1;
     return dayNumber <= 1 ? time : `Day ${dayNumber} · ${time}`;
+}
+
+/**
+ * One bedtime marker offset per simulated day, in continuous chart hours.
+ */
+export function computeBedtimeOffsets(bedtime: string, originDate: Date, days: number): number[] {
+    const bedHour = parseTimeToHours(bedtime);
+    if (bedHour === null) return [];
+    const originHour = originDate.getHours() + originDate.getMinutes() / 60.0;
+    let firstOffset = bedHour - originHour;
+    if (firstOffset < 0) firstOffset += 24;
+    return Array.from({ length: Math.max(0, days) }, (_, day) => firstOffset + 24 * day);
+}
+
+/**
+ * X-axis tick offsets: 1-day charts align to wall-clock 4h marks (8AM, 12PM,
+ * …) as the original chart did; multi-day horizons anchor to the dose cycle.
+ */
+export function computeChartTicks(originDate: Date, days: number): number[] {
+    const ticks: number[] = [];
+    if (days === 1) {
+        const firstTick = (4 - (originDate.getHours() % 4)) % 4;
+        for (let tick = firstTick; tick <= 24; tick += 4) ticks.push(tick);
+        return ticks;
+    }
+    const spacing = days === 3 ? 12 : 24;
+    for (let tick = 0; tick <= days * 24; tick += spacing) ticks.push(tick);
+    return ticks;
 }
 
 export interface SteadyStateBaseline {
@@ -216,15 +258,19 @@ export function calculateSteadyStateBaseline(
     consumptions: Consumption[],
     halfLife: number
 ): SteadyStateBaseline | null {
-    if (consumptions.length === 0) return null;
+    if (!Number.isFinite(halfLife) || halfLife <= 0) return null;
+    if (!Array.isArray(consumptions)) return null;
+
+    const doseHours = consumptions
+        .map((cons) => ({ hour: parseTimeToHours(cons.time), mg: cons.mg }))
+        .filter((dose): dose is { hour: number; mg: number } => dose.hour !== null);
+
+    // no valid doses, or a decaf schedule: there is no baseline to claim
+    if (doseHours.length === 0) return null;
+    if (doseHours.reduce((sum, dose) => sum + dose.mg, 0) <= 0) return null;
 
     const f = Math.pow(0.5, 24 / halfLife);
     const geometricSum = 1 / (1 - f);
-
-    const doseHours = consumptions.map((cons) => {
-        const [hours, minutes] = cons.time.split(':').map(Number);
-        return { hour: hours + minutes / 60.0, mg: cons.mg };
-    });
 
     // steady-state level just before in-day hour t
     const levelJustBefore = (t: number): number =>
@@ -312,10 +358,11 @@ export function generateDecayChartData(
     halfLife: number,
     options: DecayChartOptions = {}
 ): DecayChartPoint[] {
-    if (consumptions.length === 0) return [];
+    if (!Number.isFinite(halfLife) || halfLife <= 0) return [];
 
     const { days = 1 } = options;
     const { originDate, doses } = buildDoseTimeline(consumptions, options);
+    if (doses.length === 0) return [];
 
     const data: DecayChartPoint[] = [];
 
