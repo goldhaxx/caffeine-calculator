@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, calculateSteadyStateBaseline, formatHourOffsetLabel, generateDecayChartData } from '@/lib/caffeine';
+import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, calculateSteadyStateBaseline, computeBedtimeOffsets, computeChartTicks, formatHourOffsetLabel, generateDecayChartData } from '@/lib/caffeine';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { motion } from 'framer-motion';
 import { Repeat } from 'lucide-react';
 import { BaselineRampCard } from './BaselineRampCard';
+import { BASELINE_COLOR, CHART_AXIS_STROKE, CHART_GRID_STROKE, CHART_TOOLTIP_STYLE, formatMg } from './chartTheme';
 
 interface ResultsDashboardProps {
   consumptions: Consumption[];
@@ -21,27 +22,25 @@ type HorizonDays = 1 | 3 | 7;
 export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsDashboardProps) {
   const halfLife = METABOLISM_HALF_LIVES[metabolism];
   const [horizonDays, setHorizonDays] = useState<HorizonDays>(1);
-  const [repeatDaily, setRepeatDaily] = useState(false);
+  const [shouldRepeatDaily, setShouldRepeatDaily] = useState(false);
 
   const remainingAtBedtime = calculateRemainingAtTime(consumptions, bedtime, halfLife);
   const safeWindows = calculateSafeSleepWindows(consumptions, halfLife);
-  const chartData = generateDecayChartData(consumptions, halfLife, { days: horizonDays, repeatDaily });
-  const baseline = repeatDaily ? calculateSteadyStateBaseline(consumptions, halfLife) : null;
+
+  // memoized: recharts re-lays-out whenever the data array identity changes,
+  // and this recomputes on every keystroke in unrelated inputs otherwise
+  const chartData = useMemo(
+    () => generateDecayChartData(consumptions, halfLife, { days: horizonDays, shouldRepeatDaily }),
+    [consumptions, halfLife, horizonDays, shouldRepeatDaily]
+  );
+  const baseline = useMemo(
+    () => (shouldRepeatDaily ? calculateSteadyStateBaseline(consumptions, halfLife) : null),
+    [consumptions, halfLife, shouldRepeatDaily]
+  );
 
   const chartOrigin = chartData.length > 0 ? chartData[0].actualTime : null;
-  const tickSpacing = horizonDays === 1 ? 4 : horizonDays === 3 ? 12 : 24;
-  const ticks = Array.from({ length: (horizonDays * 24) / tickSpacing + 1 }, (_, i) => i * tickSpacing);
-
-  // one bedtime marker per simulated day, as continuous hour offsets
-  const bedtimeOffsets = (() => {
-    if (!chartOrigin) return [];
-    const [bedHours, bedMinutes] = bedtime.split(':').map(Number);
-    if (Number.isNaN(bedHours) || Number.isNaN(bedMinutes)) return [];
-    let firstOffset = bedHours + bedMinutes / 60 - (chartOrigin.getHours() + chartOrigin.getMinutes() / 60);
-    if (firstOffset < 0) firstOffset += 24;
-    return Array.from({ length: horizonDays }, (_, day) => firstOffset + 24 * day)
-      .filter((offset) => offset <= horizonDays * 24);
-  })();
+  const ticks = chartOrigin ? computeChartTicks(chartOrigin, horizonDays) : [];
+  const bedtimeOffsets = chartOrigin ? computeBedtimeOffsets(bedtime, chartOrigin, horizonDays) : [];
 
   const getStatusColor = (amount: number) => {
     if (amount <= 15) return 'text-emerald-400';
@@ -145,9 +144,9 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                 </Select>
                 <Button
                   size="sm"
-                  variant={repeatDaily ? 'default' : 'outline'}
-                  onClick={() => setRepeatDaily(!repeatDaily)}
-                  className={`h-8 rounded-full px-3 text-xs ${repeatDaily ? '' : 'border-white/20 hover:bg-white/10'}`}
+                  variant={shouldRepeatDaily ? 'default' : 'outline'}
+                  onClick={() => setShouldRepeatDaily(!shouldRepeatDaily)}
+                  className={`h-8 rounded-full px-3 text-xs ${shouldRepeatDaily ? '' : 'border-white/20 hover:bg-white/10'}`}
                 >
                   <Repeat className="h-3.5 w-3.5 mr-1.5" /> Repeat daily
                 </Button>
@@ -156,7 +155,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
             {baseline && (
               <p className="text-sm mt-2">
                 <span className="text-emerald-400 font-medium">Baseline: {baseline.troughMg.toFixed(1)} mg</span>
-                <span className="text-white/50"> — your daily routine never drops below this. Steady after {baseline.daysToSteadyState} day{baseline.daysToSteadyState === 1 ? '' : 's'} · daily peak {baseline.peakMg.toFixed(1)} mg</span>
+                <span className="text-white/50"> — the floor this routine settles into, reached after ~{baseline.daysToSteadyState} day{baseline.daysToSteadyState === 1 ? '' : 's'}</span>
               </p>
             )}
           </CardHeader>
@@ -170,24 +169,22 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                       <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} vertical={false} />
                   <XAxis
                     dataKey="hourOffset"
                     type="number"
                     domain={[0, horizonDays * 24]}
                     ticks={ticks}
                     interval={0}
-                    stroke="rgba(255,255,255,0.5)"
+                    stroke={CHART_AXIS_STROKE}
                     fontSize={horizonDays === 1 ? 12 : 10}
                     tickLine={false}
                     tickFormatter={(val) => (chartOrigin ? formatHourOffsetLabel(chartOrigin, Number(val)) : '')}
                   />
-                  <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
+                  <YAxis stroke={CHART_AXIS_STROKE} fontSize={12} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'rgba(255,255,255,0.2)', borderRadius: '8px' }}
-                    itemStyle={{ color: 'hsl(var(--primary))' }}
-                    labelStyle={{ color: 'rgba(255,255,255,0.8)' }}
-                    formatter={(val?: number | string | (number | string)[]) => [`${Number(val ?? 0).toFixed(1)} mg`, 'Remaining']}
+                    {...CHART_TOOLTIP_STYLE}
+                    formatter={(val?: number | string | (number | string)[]) => [formatMg(val), 'Remaining']}
                     labelFormatter={(label) => (chartOrigin ? formatHourOffsetLabel(chartOrigin, Number(label), 'tooltip') : '')}
                   />
                   <Area
@@ -208,13 +205,13 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                       label={index === 0 ? { position: 'top', value: 'Bedtime', fill: 'hsl(var(--destructive))', fontSize: 12 } : undefined}
                     />
                   ))}
-                  {/* Steady-state baseline floor (daily routine) */}
+                  {/* Steady-state baseline floor (daily routine asymptote) */}
                   {baseline && (
                     <ReferenceLine
                       y={baseline.troughMg}
-                      stroke="#34d399"
+                      stroke={BASELINE_COLOR}
                       strokeDasharray="4 4"
-                      label={{ position: 'insideTopRight', value: `Baseline ${baseline.troughMg.toFixed(1)} mg`, fill: '#34d399', fontSize: 11 }}
+                      label={{ position: 'insideTopRight', value: `Baseline ${baseline.troughMg.toFixed(1)} mg`, fill: BASELINE_COLOR, fontSize: 11 }}
                     />
                   )}
                 </AreaChart>

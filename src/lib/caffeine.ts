@@ -22,6 +22,10 @@ export const SENSITIVITY_THRESHOLDS = {
 
 export type SensitivityType = keyof typeof SENSITIVITY_THRESHOLDS;
 
+// steady state is "reached" when less than this fraction of the asymptotic
+// baseline remains unbuilt (1% → daysToSteadyState reports 99% convergence)
+const STEADY_STATE_RESIDUAL = 0.01;
+
 export interface DoseEvent {
     hourOffset: number; // hours since the timeline origin
     mg: number;
@@ -70,8 +74,8 @@ export function parseTimeToHours(timeStr: string): number | null {
 }
 
 export interface DecayChartOptions {
-    days?: number;         // simulation horizon in days (default 1)
-    repeatDaily?: boolean; // replicate the day-0 schedule every 24h (default false)
+    days?: number;               // simulation horizon in days (default 1)
+    shouldRepeatDaily?: boolean; // replicate the day-0 schedule every 24h (default false)
 }
 
 export interface DoseTimeline {
@@ -87,7 +91,7 @@ export function buildDoseTimeline(
     consumptions: Consumption[],
     options: DecayChartOptions = {}
 ): DoseTimeline {
-    const { days = 1, repeatDaily = false } = options;
+    const { days = 1, shouldRepeatDaily = false } = options;
 
     const baseDate = new Date();
     baseDate.setHours(0, 0, 0, 0);
@@ -106,7 +110,7 @@ export function buildDoseTimeline(
     originDate.setHours(originHour, 0, 0, 0);
 
     // repeating must never drop the day-0 schedule, even for a degenerate horizon
-    const repeats = repeatDaily ? Math.max(1, days) : 1;
+    const repeats = shouldRepeatDaily ? Math.max(1, days) : 1;
     const doses: DoseEvent[] = [];
     for (let day = 0; day < repeats; day++) {
         for (const dose of validDoses) {
@@ -269,8 +273,9 @@ export function calculateSteadyStateBaseline(
     if (doseHours.length === 0) return null;
     if (doseHours.reduce((sum, dose) => sum + dose.mg, 0) <= 0) return null;
 
-    const f = Math.pow(0.5, 24 / halfLife);
-    const geometricSum = 1 / (1 - f);
+    // fraction of a dose still circulating 24h later
+    const dailyRetention = Math.pow(0.5, 24 / halfLife);
+    const geometricSum = 1 / (1 - dailyRetention);
 
     // steady-state level just before in-day hour t
     const levelJustBefore = (t: number): number =>
@@ -292,7 +297,7 @@ export function calculateSteadyStateBaseline(
         peakMg = Math.max(peakMg, before + doseAtInstant);
     }
 
-    const daysToSteadyState = Math.ceil(Math.log(0.01) / Math.log(f));
+    const daysToSteadyState = Math.ceil(Math.log(STEADY_STATE_RESIDUAL) / Math.log(dailyRetention));
 
     return { troughMg, peakMg, daysToSteadyState };
 }
@@ -318,7 +323,7 @@ export function calculateBaselineRampUp(
     const steadyState = calculateSteadyStateBaseline(consumptions, halfLife);
     if (!steadyState) return [];
 
-    const { doses } = buildDoseTimeline(consumptions, { days, repeatDaily: true });
+    const { doses } = buildDoseTimeline(consumptions, { days, shouldRepeatDaily: true });
     const dayZeroOffsets = [...new Set(
         doses.filter((dose) => dose.hourOffset < 24).map((dose) => dose.hourOffset)
     )];
@@ -341,16 +346,14 @@ export function calculateBaselineRampUp(
 }
 
 export interface DecayChartPoint {
-    timeStr: string;
     remaining: number;
     hourOffset: number;
     actualTime: Date;
-    dayIndex: number;
 }
 
 /**
  * Generates decay chart data over a 1-N day horizon in 30-min steps.
- * Continuous decay — no clipping at the 24h boundary. With repeatDaily,
+ * Continuous decay — no clipping at the 24h boundary. With shouldRepeatDaily,
  * the day-0 schedule recurs every 24h so accumulation is visible.
  */
 export function generateDecayChartData(
@@ -368,14 +371,10 @@ export function generateDecayChartData(
 
     for (let i = 0; i <= days * 48; i++) { // 30 min steps
         const hourOffset = i * 0.5;
-        const currentDt = addMinutes(originDate, i * 30);
-
         data.push({
-            timeStr: format(currentDt, 'HH:mm'),
             remaining: calculateRemainingAtOffset(doses, hourOffset, halfLife),
             hourOffset,
-            actualTime: currentDt,
-            dayIndex: Math.floor(hourOffset / 24),
+            actualTime: addMinutes(originDate, i * 30),
         });
     }
 

@@ -192,7 +192,7 @@ describe('caffeine pharmacokinetic model', () => {
 
   describe('buildDoseTimeline', () => {
     it('should return empty doses for no consumptions', () => {
-      const { doses } = buildDoseTimeline([], { days: 3, repeatDaily: true });
+      const { doses } = buildDoseTimeline([], { days: 3, shouldRepeatDaily: true });
       expect(doses).toEqual([]);
     });
 
@@ -207,7 +207,7 @@ describe('caffeine pharmacokinetic model', () => {
 
     it('should replicate the day-0 schedule across days when repeating', () => {
       const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
-      const { doses } = buildDoseTimeline(consumptions, { days: 3, repeatDaily: true });
+      const { doses } = buildDoseTimeline(consumptions, { days: 3, shouldRepeatDaily: true });
       expect(doses.map((d) => d.hourOffset)).toEqual([0, 24, 48]);
       expect(doses.every((d) => d.mg === 150)).toBe(true);
     });
@@ -223,13 +223,13 @@ describe('caffeine pharmacokinetic model', () => {
         { id: '2', time: '13:00', mg: 50 },
         { id: '1', time: '08:00', mg: 100 },
       ];
-      const { doses } = buildDoseTimeline(consumptions, { days: 2, repeatDaily: true });
+      const { doses } = buildDoseTimeline(consumptions, { days: 2, shouldRepeatDaily: true });
       expect(doses.map((d) => d.hourOffset)).toEqual([0, 5, 24, 29]);
       expect(doses.map((d) => d.mg)).toEqual([100, 50, 100, 50]);
     });
 
     it('should keep the day-0 schedule when repeating with a degenerate horizon', () => {
-      const { doses } = buildDoseTimeline([{ id: '1', time: '07:00', mg: 150 }], { days: 0, repeatDaily: true });
+      const { doses } = buildDoseTimeline([{ id: '1', time: '07:00', mg: 150 }], { days: 0, shouldRepeatDaily: true });
       expect(doses.map((d) => d.hourOffset)).toEqual([0]);
     });
   });
@@ -456,9 +456,6 @@ describe('caffeine pharmacokinetic model', () => {
       const at48 = data.find((d) => d.hourOffset === 48)!;
       expect(at48.remaining).toBeCloseTo(0.19, 1);
       expect(at48.remaining).toBeGreaterThan(0);
-      // day indices track 24h cycles from the origin
-      expect(data.find((d) => d.hourOffset === 23.5)!.dayIndex).toBe(0);
-      expect(data.find((d) => d.hourOffset === 25)!.dayIndex).toBe(1);
       // no discontinuity at any 24h boundary: monotonically non-increasing after the peak
       const peakIndex = data.findIndex((d) => d.remaining > 0);
       for (let i = peakIndex + 1; i < data.length; i++) {
@@ -468,7 +465,7 @@ describe('caffeine pharmacokinetic model', () => {
 
     it('should accumulate day-over-day to the steady-state trough with repeat ON (AC-3)', () => {
       const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
-      const data = generateDecayChartData(consumptions, 5, { days: 7, repeatDaily: true });
+      const data = generateDecayChartData(consumptions, 5, { days: 7, shouldRepeatDaily: true });
       // pre-dose troughs sit at each 24h boundary (just-before-dose convention)
       const troughs = [1, 2, 3, 4, 5, 6].map(
         (k) => data.find((d) => d.hourOffset === 24 * k)!.remaining
@@ -484,7 +481,7 @@ describe('caffeine pharmacokinetic model', () => {
     it('should return empty chart data for every option combination when there are no consumptions (AC-7)', () => {
       expect(generateDecayChartData([], 5)).toEqual([]);
       expect(generateDecayChartData([], 5, { days: 7 })).toEqual([]);
-      expect(generateDecayChartData([], 5, { days: 7, repeatDaily: true })).toEqual([]);
+      expect(generateDecayChartData([], 5, { days: 7, shouldRepeatDaily: true })).toEqual([]);
     });
 
     it('should let a 0mg dose contribute nothing without perturbing the baseline (AC-7)', () => {
@@ -493,7 +490,7 @@ describe('caffeine pharmacokinetic model', () => {
         { id: '2', time: '10:00', mg: 0 },
       ];
       const without: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
-      const options = { days: 2, repeatDaily: true };
+      const options = { days: 2, shouldRepeatDaily: true };
       expect(generateDecayChartData(withZero, 5, options).map((d) => d.remaining)).toEqual(
         generateDecayChartData(without, 5, options).map((d) => d.remaining)
       );
