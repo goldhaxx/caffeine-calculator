@@ -8,6 +8,7 @@ import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingA
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { motion } from 'framer-motion';
 import { Repeat } from 'lucide-react';
+import { BaselineRampCard } from './BaselineRampCard';
 
 interface ResultsDashboardProps {
   consumptions: Consumption[];
@@ -222,6 +223,9 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Baseline Ramp-Up — day-over-day floor if today's intake repeats daily */}
+      <BaselineRampCard consumptions={consumptions} halfLife={halfLife} />
     </div>
   );
 }
