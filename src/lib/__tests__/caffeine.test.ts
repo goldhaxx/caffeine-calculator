@@ -4,6 +4,7 @@ import {
   calculateRemainingAtOffset,
   buildDoseTimeline,
   calculateSteadyStateBaseline,
+  calculateBaselineRampUp,
   formatHourOffsetLabel,
   calculateSafeSleepWindows,
   generateDecayChartData,
@@ -263,6 +264,49 @@ describe('caffeine pharmacokinetic model', () => {
       expect(calculateSteadyStateBaseline(consumptions, 3)!.daysToSteadyState).toBe(1);
       expect(calculateSteadyStateBaseline(consumptions, 5)!.daysToSteadyState).toBe(2);
       expect(calculateSteadyStateBaseline(consumptions, 8)!.daysToSteadyState).toBe(3);
+    });
+  });
+
+  describe('calculateBaselineRampUp', () => {
+    it('should return an empty array for no consumptions', () => {
+      expect(calculateBaselineRampUp([], 5)).toEqual([]);
+    });
+
+    it('should ramp the trough toward steady state as asymptote·(1−f^k) (AC-9)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const ramp = calculateBaselineRampUp(consumptions, 5);
+      expect(ramp.length).toBe(7);
+      expect(ramp.map((r) => r.day)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      // day 1: one dose down, trough = 150 * f ≈ 5.4
+      expect(ramp[0].troughMg).toBeCloseTo(5.4, 1);
+      // strictly increasing toward the asymptote
+      for (let i = 1; i < ramp.length; i++) {
+        expect(ramp[i].troughMg).toBeGreaterThan(ramp[i - 1].troughMg);
+      }
+      // final day within 0.1 of the converged steady-state trough
+      const steady = calculateSteadyStateBaseline(consumptions, 5)!;
+      expect(ramp[ramp.length - 1].troughMg).toBeCloseTo(steady.troughMg, 1);
+    });
+
+    it('should report percent of steady state as (1−f^k)·100 (AC-9)', () => {
+      const consumptions: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      const ramp = calculateBaselineRampUp(consumptions, 8);
+      const f = Math.pow(0.5, 24 / 8); // 0.125
+      // day 1: 87.5%, day 2: 98.4%, day 3: 99.8%
+      expect(ramp[0].percentOfSteadyState).toBeCloseTo((1 - f) * 100, 1);
+      expect(ramp[1].percentOfSteadyState).toBeCloseTo((1 - f * f) * 100, 1);
+      expect(ramp[2].percentOfSteadyState).toBeCloseTo((1 - f * f * f) * 100, 1);
+    });
+
+    it('should scale multi-dose schedules by the same truncated geometric series (AC-9)', () => {
+      const consumptions: Consumption[] = [
+        { id: '1', time: '07:00', mg: 150 },
+        { id: '2', time: '13:00', mg: 50 },
+      ];
+      const ramp = calculateBaselineRampUp(consumptions, 5);
+      const steady = calculateSteadyStateBaseline(consumptions, 5)!;
+      const f = Math.pow(0.5, 24 / 5);
+      expect(ramp[1].troughMg).toBeCloseTo(steady.troughMg * (1 - f * f), 3);
     });
   });
 
