@@ -298,7 +298,7 @@ describe('caffeine pharmacokinetic model', () => {
       expect(ramp[2].percentOfSteadyState).toBeCloseTo((1 - f * f * f) * 100, 1);
     });
 
-    it('should scale multi-dose schedules by the same truncated geometric series (AC-9)', () => {
+    it('should match the truncated geometric series when the trough precedes the earliest dose (AC-9)', () => {
       const consumptions: Consumption[] = [
         { id: '1', time: '07:00', mg: 150 },
         { id: '2', time: '13:00', mg: 50 },
@@ -306,7 +306,28 @@ describe('caffeine pharmacokinetic model', () => {
       const ramp = calculateBaselineRampUp(consumptions, 5);
       const steady = calculateSteadyStateBaseline(consumptions, 5)!;
       const f = Math.pow(0.5, 24 / 5);
+      // trough sits before the earliest (07:00) dose, the one case where
+      // every dose has fired exactly k times → asymptote·(1−f^k) is exact
       expect(ramp[1].troughMg).toBeCloseTo(steady.troughMg * (1 - f * f), 3);
+    });
+
+    it('should use the exact day-k floor when the trough precedes a later dose (AC-9)', () => {
+      // 100mg@07:00 + 300mg@16:00, slow (8h): the steady trough (95.26mg)
+      // sits just before the 16:00 dose, which has fired only k−1 times on
+      // day k. The naive asymptote·(1−f^k) scaling claims day-1 = 83.4mg;
+      // the true day-1 cycle minimum (1-min brute-force verified) is 45.85mg.
+      const consumptions: Consumption[] = [
+        { id: '1', time: '07:00', mg: 100 },
+        { id: '2', time: '16:00', mg: 300 },
+      ];
+      const ramp = calculateBaselineRampUp(consumptions, 8);
+      expect(ramp[0].troughMg).toBeCloseTo(45.85, 1);
+      expect(ramp[1].troughMg).toBeCloseTo(89.08, 1);
+      expect(ramp[2].troughMg).toBeCloseTo(94.49, 1);
+      const steady = calculateSteadyStateBaseline(consumptions, 8)!;
+      expect(ramp[6].troughMg).toBeCloseTo(steady.troughMg, 1);
+      // percent tracks the exact floor, not (1−f^k)
+      expect(ramp[0].percentOfSteadyState).toBeCloseTo((45.8502 / steady.troughMg) * 100, 1);
     });
   });
 
