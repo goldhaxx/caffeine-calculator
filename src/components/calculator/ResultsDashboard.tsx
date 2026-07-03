@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, generateDecayChartData } from '@/lib/caffeine';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, calculateSteadyStateBaseline, formatHourOffsetLabel, generateDecayChartData } from '@/lib/caffeine';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { motion } from 'framer-motion';
+import { Repeat } from 'lucide-react';
 
 interface ResultsDashboardProps {
   consumptions: Consumption[];
@@ -11,12 +15,32 @@ interface ResultsDashboardProps {
   metabolism: MetabolismType;
 }
 
+type HorizonDays = 1 | 3 | 7;
+
 export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsDashboardProps) {
   const halfLife = METABOLISM_HALF_LIVES[metabolism];
-  
+  const [horizonDays, setHorizonDays] = useState<HorizonDays>(1);
+  const [repeatDaily, setRepeatDaily] = useState(false);
+
   const remainingAtBedtime = calculateRemainingAtTime(consumptions, bedtime, halfLife);
   const safeWindows = calculateSafeSleepWindows(consumptions, halfLife);
-  const chartData = generateDecayChartData(consumptions, halfLife);
+  const chartData = generateDecayChartData(consumptions, halfLife, { days: horizonDays, repeatDaily });
+  const baseline = repeatDaily ? calculateSteadyStateBaseline(consumptions, halfLife) : null;
+
+  const chartOrigin = chartData.length > 0 ? chartData[0].actualTime : null;
+  const tickSpacing = horizonDays === 1 ? 4 : horizonDays === 3 ? 12 : 24;
+  const ticks = Array.from({ length: (horizonDays * 24) / tickSpacing + 1 }, (_, i) => i * tickSpacing);
+
+  // one bedtime marker per simulated day, as continuous hour offsets
+  const bedtimeOffsets = (() => {
+    if (!chartOrigin) return [];
+    const [bedHours, bedMinutes] = bedtime.split(':').map(Number);
+    if (Number.isNaN(bedHours) || Number.isNaN(bedMinutes)) return [];
+    let firstOffset = bedHours + bedMinutes / 60 - (chartOrigin.getHours() + chartOrigin.getMinutes() / 60);
+    if (firstOffset < 0) firstOffset += 24;
+    return Array.from({ length: horizonDays }, (_, day) => firstOffset + 24 * day)
+      .filter((offset) => offset <= horizonDays * 24);
+  })();
 
   const getStatusColor = (amount: number) => {
     if (amount <= 15) return 'text-emerald-400';
@@ -100,10 +124,40 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
         <Card className="glass-panel border-white/10 overflow-hidden relative">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-indigo-500 to-primary"></div>
           <CardHeader>
-            <CardTitle className="font-outfit text-2xl">Decay Timeline</CardTitle>
-            <CardDescription className="text-white/60">
-              Visualizing the ({METABOLISM_HALF_LIVES[metabolism]}h) elimination half-life curve
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="font-outfit text-2xl">Decay Timeline</CardTitle>
+                <CardDescription className="text-white/60">
+                  Visualizing the ({METABOLISM_HALF_LIVES[metabolism]}h) elimination half-life curve
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={String(horizonDays)} onValueChange={(val) => setHorizonDays(Number(val) as HorizonDays)}>
+                  <SelectTrigger className="h-8 w-[104px] bg-white/5 border-white/20 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 day</SelectItem>
+                    <SelectItem value="3">3 days</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant={repeatDaily ? 'default' : 'outline'}
+                  onClick={() => setRepeatDaily(!repeatDaily)}
+                  className={`h-8 rounded-full px-3 text-xs ${repeatDaily ? '' : 'border-white/20 hover:bg-white/10'}`}
+                >
+                  <Repeat className="h-3.5 w-3.5 mr-1.5" /> Repeat daily
+                </Button>
+              </div>
+            </div>
+            {baseline && (
+              <p className="text-sm mt-2">
+                <span className="text-emerald-400 font-medium">Baseline: {baseline.troughMg.toFixed(1)} mg</span>
+                <span className="text-white/50"> — your daily routine never drops below this. Steady after {baseline.daysToSteadyState} day{baseline.daysToSteadyState === 1 ? '' : 's'} · daily peak {baseline.peakMg.toFixed(1)} mg</span>
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full mt-4">
@@ -116,40 +170,52 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-                  <XAxis 
-                    dataKey="timeStr" 
-                    stroke="rgba(255,255,255,0.5)" 
-                    fontSize={12}
+                  <XAxis
+                    dataKey="hourOffset"
+                    type="number"
+                    domain={[0, horizonDays * 24]}
+                    ticks={ticks}
                     interval={0}
+                    stroke="rgba(255,255,255,0.5)"
+                    fontSize={horizonDays === 1 ? 12 : 10}
                     tickLine={false}
-                    tickFormatter={(val) => {
-                      const [hStr, mStr] = String(val).split(':');
-                      if (!hStr || !mStr) return '';
-                      const h = parseInt(hStr, 10);
-                      if (mStr === '00' && h % 4 === 0) {
-                        return `${h % 12 || 12}${h >= 12 ? 'PM' : 'AM'}`;
-                      }
-                      return '';
-                    }}
+                    tickFormatter={(val) => (chartOrigin ? formatHourOffsetLabel(chartOrigin, Number(val)) : '')}
                   />
                   <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'rgba(255,255,255,0.2)', borderRadius: '8px' }}
                     itemStyle={{ color: 'hsl(var(--primary))' }}
                     labelStyle={{ color: 'rgba(255,255,255,0.8)' }}
-                    formatter={(val: any) => [`${Number(val).toFixed(1)} mg`, 'Remaining']}
-                    labelFormatter={(label) => formatTime12h(label)}
+                    formatter={(val?: number | string | (number | string)[]) => [`${Number(val ?? 0).toFixed(1)} mg`, 'Remaining']}
+                    labelFormatter={(label) => (chartOrigin ? formatHourOffsetLabel(chartOrigin, Number(label), 'tooltip') : '')}
                   />
-                  <Area 
-                    type="monotone" 
-                    dataKey="remaining" 
-                    stroke="hsl(var(--primary))" 
+                  <Area
+                    type="monotone"
+                    dataKey="remaining"
+                    stroke="hsl(var(--primary))"
                     strokeWidth={3}
-                    fillOpacity={1} 
-                    fill="url(#colorRemaining)" 
+                    fillOpacity={1}
+                    fill="url(#colorRemaining)"
                   />
-                  {/* Bedtime Marker */}
-                  <ReferenceLine x={bedtime} stroke="hsl(var(--destructive))" strokeDasharray="3 3" label={{ position: 'top', value: 'Bedtime', fill: 'hsl(var(--destructive))', fontSize: 12 }} />
+                  {/* Bedtime markers — one per simulated day */}
+                  {bedtimeOffsets.map((offset, index) => (
+                    <ReferenceLine
+                      key={`bedtime-${offset}`}
+                      x={offset}
+                      stroke="hsl(var(--destructive))"
+                      strokeDasharray="3 3"
+                      label={index === 0 ? { position: 'top', value: 'Bedtime', fill: 'hsl(var(--destructive))', fontSize: 12 } : undefined}
+                    />
+                  ))}
+                  {/* Steady-state baseline floor (daily routine) */}
+                  {baseline && (
+                    <ReferenceLine
+                      y={baseline.troughMg}
+                      stroke="#34d399"
+                      strokeDasharray="4 4"
+                      label={{ position: 'insideTopRight', value: `Baseline ${baseline.troughMg.toFixed(1)} mg`, fill: '#34d399', fontSize: 11 }}
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
