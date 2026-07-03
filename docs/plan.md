@@ -2,8 +2,8 @@
 
 > Feature: bts-711-multi-day-decay-baseline
 > Work: linear:BTS-711
-> Created: 1783030124
-> Spec hash: 0047847f
+> Created: 1783038091
+> Spec hash: e11ae884
 > Based on: docs/spec.md
 
 ## Objective
@@ -55,6 +55,18 @@ Each step is one red-green-refactor cycle. Test command: `npm test` (vitest run)
 - **Implement:** In `ResultsDashboard.tsx`: local state for horizon (1/3/7) + "Repeat daily" toggle rendered in the Decay Timeline card header (shadcn `Select`/`Button` per existing idiom); switch XAxis to numeric `hourOffset` (`type="number"`) with `formatHourOffsetLabel` ticks; bedtime `ReferenceLine` per simulated day at computed offsets; when repeat ON add horizontal `ReferenceLine y={troughMg}` labeled "Baseline" plus a stat line "Baseline: X mg · steady after N days" from `calculateSteadyStateBaseline`. Defaults (1 day, repeat off) preserve today's layout.
 - **Files:** `src/components/calculator/ResultsDashboard.tsx`
 - **Verify:** lint + build clean; dev-server visual check of all four control combinations; existing single-day view unchanged by default.
+
+### Step 8: Baseline ramp-up data (AC-9) — added after operator scope extension
+- **Test:** `calculateBaselineRampUp([{time:'07:00', mg:150}], 5)` → 7 entries; day-1 trough ≈ 150·f ≈ 5.4 ±0.1; strictly increasing; final within 0.1 of the steady-state trough; `percentOfSteadyState = (1−f^k)·100`; empty → `[]`.
+- **Implement:** `calculateBaselineRampUp(consumptions, halfLife, days = 7)` in `src/lib/caffeine.ts` — trough after k days = steady-state trough × `(1−f^k)` (per-dose geometric series truncates identically, so the asymptote scales).
+- **Files:** `src/lib/caffeine.ts`, `src/lib/__tests__/caffeine.test.ts`
+- **Verify:** `npm test` green.
+
+### Step 9: Baseline Ramp-Up card (AC-10)
+- **Test:** no component harness — verify via `npm run lint`, `npm run build`, operator visual check.
+- **Implement:** New `src/components/calculator/BaselineRampCard.tsx` (recharts bar/line of per-day troughs, steady-state reference, per-day mg labels, "if you repeat today's intake daily" framing), mounted in `ResultsDashboard` below the Decay Timeline card; hidden when consumptions are empty.
+- **Files:** `src/components/calculator/BaselineRampCard.tsx`, `src/components/calculator/ResultsDashboard.tsx`
+- **Verify:** lint + build clean; operator eyeballs the card.
 
 ## Risks
 

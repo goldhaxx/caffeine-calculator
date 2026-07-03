@@ -28,6 +28,8 @@ Each criterion is independently testable. Binary pass/fail.
 - [ ] **AC-6 (UI controls):** The Decay Timeline card gains a horizon selector (1 / 3 / 7 days) and a "Repeat daily" toggle. Defaults (1 day, repeat off) preserve the current single-day layout. With repeat ON, a horizontal reference line marks the steady-state trough and a stat displays "Baseline: X mg" plus days-to-steady-state.
 - [ ] **AC-7 (edge — empty/zero):** Empty consumptions → chart data `[]` and `calculateSteadyStateBaseline` returns `null`; a 0mg dose contributes 0 at every point; UI renders without error in both cases.
 - [ ] **AC-8 (regression):** All pre-existing tests in `src/lib/__tests__/caffeine.test.ts` pass unchanged; `calculateRemainingAtTime` and `calculateSafeSleepWindows` keep their current single-day semantics for the bedtime card and sleep windows.
+- [ ] **AC-9 (ramp-up data):** `calculateBaselineRampUp(consumptions, halfLife)` returns one entry per day `{day, troughMg, percentOfSteadyState}` for 7 days: trough after k days equals `asymptote·(1−f^k)` (day 1 ≈ 5.4mg ±0.1 for 150mg @ 5h), values strictly increase, the final day is within 0.1mg of the steady-state trough, and `percentOfSteadyState = (1−f^k)·100`. Empty consumptions → `[]`.
+- [ ] **AC-10 (ramp-up card):** A "Baseline Ramp-Up" card, driven by the same Your Intake inputs, visualizes day-over-day trough growth toward steady state ("if you repeat today's intake daily") with per-day mg values and the converged baseline annotated. Hidden when there are no consumptions.
 
 ## Affected Files
 
@@ -35,7 +37,8 @@ Each criterion is independently testable. Binary pass/fail.
 |------|--------|
 | `src/lib/caffeine.ts` | Modified — continuous-time decay core (hour offsets, no 24h wrap), multi-day/repeat chart generator, `calculateSteadyStateBaseline` |
 | `src/lib/__tests__/caffeine.test.ts` | Modified — new suites for AC-1…AC-5, AC-7 |
-| `src/components/calculator/ResultsDashboard.tsx` | Modified — horizon selector, repeat toggle, baseline ReferenceLine + stat, day-aware axis/tooltip labels |
+| `src/components/calculator/ResultsDashboard.tsx` | Modified — horizon selector, repeat toggle, baseline ReferenceLine + stat, day-aware axis/tooltip labels, ramp-up card mount |
+| `src/components/calculator/BaselineRampCard.tsx` | New — day-over-day baseline ramp-up visualization (AC-10) |
 
 ## Dependencies
 
