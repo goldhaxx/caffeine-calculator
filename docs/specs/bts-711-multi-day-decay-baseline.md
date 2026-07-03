@@ -41,6 +41,8 @@ Each criterion is independently testable. Binary pass/fail.
 | `src/lib/__tests__/caffeine.test.ts` | Modified — new suites for AC-1…AC-5, AC-7 |
 | `src/components/calculator/ResultsDashboard.tsx` | Modified — horizon selector, repeat toggle, baseline ReferenceLine + stat, day-aware axis/tooltip labels, ramp-up card mount |
 | `src/components/calculator/BaselineRampCard.tsx` | New — day-over-day baseline ramp-up visualization (AC-10) |
+| `src/components/calculator/InfoTip.tsx` | New — shared info-icon tooltip shell for the math explainers (AC-12) |
+| `src/components/calculator/chartTheme.ts` | New — shared chart tooltip/axis/grid/baseline styling |
 
 ## Dependencies
 

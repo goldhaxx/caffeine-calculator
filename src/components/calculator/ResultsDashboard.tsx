@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, calculateSteadyStateBaseline, computeBedtimeOffsets, computeChartTicks, formatHourOffsetLabel, generateDecayChartData } from '@/lib/caffeine';
+import { Consumption, MetabolismType, METABOLISM_HALF_LIVES, calculateRemainingAtTime, calculateSafeSleepWindows, computeBedtimeOffsets, computeChartTicks, formatHourOffsetLabel, generateDecayChartData, summarizeSteadyStateMath } from '@/lib/caffeine';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { motion } from 'framer-motion';
 import { Repeat } from 'lucide-react';
 import { BaselineRampCard } from './BaselineRampCard';
 import { BASELINE_COLOR, CHART_AXIS_STROKE, CHART_GRID_STROKE, CHART_TOOLTIP_STYLE, formatMg } from './chartTheme';
+import { InfoTip } from './InfoTip';
 
 interface ResultsDashboardProps {
   consumptions: Consumption[];
@@ -18,11 +19,13 @@ interface ResultsDashboardProps {
 }
 
 type HorizonDays = 1 | 3 | 7;
+type ChartView = 'timeline' | 'rampup';
 
 export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsDashboardProps) {
   const halfLife = METABOLISM_HALF_LIVES[metabolism];
   const [horizonDays, setHorizonDays] = useState<HorizonDays>(1);
   const [shouldRepeatDaily, setShouldRepeatDaily] = useState(false);
+  const [activeView, setActiveView] = useState<ChartView>('timeline');
 
   const remainingAtBedtime = calculateRemainingAtTime(consumptions, bedtime, halfLife);
   const safeWindows = calculateSafeSleepWindows(consumptions, halfLife);
@@ -33,10 +36,14 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
     () => generateDecayChartData(consumptions, halfLife, { days: horizonDays, shouldRepeatDaily }),
     [consumptions, halfLife, horizonDays, shouldRepeatDaily]
   );
-  const baseline = useMemo(
-    () => (shouldRepeatDaily ? calculateSteadyStateBaseline(consumptions, halfLife) : null),
-    [consumptions, halfLife, shouldRepeatDaily]
+  const mathSummary = useMemo(
+    () => summarizeSteadyStateMath(consumptions, halfLife),
+    [consumptions, halfLife]
   );
+  const baseline = shouldRepeatDaily ? mathSummary : null;
+
+  // the ramp view needs a caffeinated schedule; fall back to the timeline
+  const view: ChartView = mathSummary ? activeView : 'timeline';
 
   const chartOrigin = chartData.length > 0 ? chartData[0].actualTime : null;
   const ticks = chartOrigin ? computeChartTicks(chartOrigin, horizonDays) : [];
@@ -119,14 +126,51 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
         </motion.div>
       </div>
 
-      {/* Chart Card */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+      {/* Tabbed chart slot — Decay Timeline and Baseline Ramp-Up share one position */}
+      {mathSummary && (
+        <div role="tablist" aria-label="Chart view" className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 backdrop-blur-md">
+          {([['timeline', 'Decay Timeline'], ['rampup', 'Baseline Ramp-Up']] as const).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={view === id}
+              onClick={() => setActiveView(id)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${view === id ? 'bg-primary text-primary-foreground' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'rampup' && mathSummary ? (
+        <BaselineRampCard consumptions={consumptions} halfLife={halfLife} mathSummary={mathSummary} />
+      ) : (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="glass-panel border-white/10 overflow-hidden relative">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-indigo-500 to-primary"></div>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle className="font-outfit text-2xl">Decay Timeline</CardTitle>
+                <CardTitle className="font-outfit text-2xl flex items-center gap-2">
+                  Decay Timeline
+                  {mathSummary && (
+                    <InfoTip label="How the decay curve is calculated">
+                      <p className="text-sm mb-2">
+                        <strong className="text-primary">The decay law:</strong> remaining = dose × 0.5^(hours ÷ {halfLife}).
+                        Every {halfLife} hours, half of whatever is left clears — a percentage of the level, not a fixed amount.
+                      </p>
+                      <p className="text-sm mb-2">
+                        So after 24h, {mathSummary.retentionPct.toFixed(1)}% of a dose is still circulating — the curve
+                        carries past the 24h mark instead of clipping to zero.
+                      </p>
+                      <p className="text-sm">
+                        With Repeat daily on, the dashed line marks the steady-state floor this routine converges to —
+                        the Baseline Ramp-Up tab shows the day-by-day build.
+                      </p>
+                    </InfoTip>
+                  )}
+                </CardTitle>
                 <CardDescription className="text-white/60">
                   Visualizing the ({METABOLISM_HALF_LIVES[metabolism]}h) elimination half-life curve
                 </CardDescription>
@@ -154,7 +198,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
             </div>
             {baseline && (
               <p className="text-sm mt-2">
-                <span className="text-emerald-400 font-medium">Baseline: {baseline.troughMg.toFixed(1)} mg</span>
+                <span className="text-emerald-400 font-medium">Baseline: {baseline.floorMg.toFixed(1)} mg</span>
                 <span className="text-white/50"> — the floor this routine settles into, reached after ~{baseline.daysToSteadyState} day{baseline.daysToSteadyState === 1 ? '' : 's'}</span>
               </p>
             )}
@@ -208,10 +252,10 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
                   {/* Steady-state baseline floor (daily routine asymptote) */}
                   {baseline && (
                     <ReferenceLine
-                      y={baseline.troughMg}
+                      y={baseline.floorMg}
                       stroke={BASELINE_COLOR}
                       strokeDasharray="4 4"
-                      label={{ position: 'insideTopRight', value: `Baseline ${baseline.troughMg.toFixed(1)} mg`, fill: BASELINE_COLOR, fontSize: 11 }}
+                      label={{ position: 'insideTopRight', value: `Baseline ${baseline.floorMg.toFixed(1)} mg`, fill: BASELINE_COLOR, fontSize: 11 }}
                     />
                   )}
                 </AreaChart>
@@ -220,9 +264,7 @@ export function ResultsDashboard({ consumptions, bedtime, metabolism }: ResultsD
           </CardContent>
         </Card>
       </motion.div>
-
-      {/* Baseline Ramp-Up — day-over-day floor if today's intake repeats daily */}
-      <BaselineRampCard consumptions={consumptions} halfLife={halfLife} />
+      )}
     </div>
   );
 }
