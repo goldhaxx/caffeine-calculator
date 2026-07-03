@@ -5,6 +5,8 @@ import {
   buildDoseTimeline,
   calculateSteadyStateBaseline,
   calculateBaselineRampUp,
+  computeBedtimeOffsets,
+  computeChartTicks,
   formatHourOffsetLabel,
   calculateSafeSleepWindows,
   generateDecayChartData,
@@ -115,8 +117,11 @@ describe('caffeine pharmacokinetic model', () => {
       expect(formatHourOffsetLabel(origin, 48)).toBe('Day 3 · 7AM');
     });
 
-    it('should roll the day number at calendar midnight', () => {
-      expect(formatHourOffsetLabel(origin, 17)).toBe('Day 2 · 12AM');
+    it('should keep pre-24h offsets in day 1 (cycle-based day numbering)', () => {
+      // days count 24h dose cycles from the origin, matching the ramp card
+      // and the trough instants — a 1-day chart never shows "Day 2"
+      expect(formatHourOffsetLabel(origin, 17)).toBe('12AM');
+      expect(formatHourOffsetLabel(origin, 23.5, 'tooltip')).toBe('6:30 AM');
     });
 
     it('should include minutes in tooltip style', () => {
@@ -221,6 +226,98 @@ describe('caffeine pharmacokinetic model', () => {
       const { doses } = buildDoseTimeline(consumptions, { days: 2, repeatDaily: true });
       expect(doses.map((d) => d.hourOffset)).toEqual([0, 5, 24, 29]);
       expect(doses.map((d) => d.mg)).toEqual([100, 50, 100, 50]);
+    });
+
+    it('should keep the day-0 schedule when repeating with a degenerate horizon', () => {
+      const { doses } = buildDoseTimeline([{ id: '1', time: '07:00', mg: 150 }], { days: 0, repeatDaily: true });
+      expect(doses.map((d) => d.hourOffset)).toEqual([0]);
+    });
+  });
+
+  describe('malformed input hardening (AC-7)', () => {
+    it('should skip consumptions with malformed times instead of crashing', () => {
+      const consumptions: Consumption[] = [
+        { id: '1', time: '', mg: 999 },
+        { id: '2', time: '08:00', mg: 100 },
+      ];
+      // '' sorts earliest — must not poison the origin with an Invalid Date
+      const data = generateDecayChartData(consumptions, 5);
+      const solo = generateDecayChartData([{ id: '2', time: '08:00', mg: 100 }], 5);
+      expect(data.length).toBe(49);
+      expect(data.map((d) => d.remaining)).toEqual(solo.map((d) => d.remaining));
+    });
+
+    it('should return empty/null when every consumption is malformed', () => {
+      const bad: Consumption[] = [{ id: '1', time: '8', mg: 100 }];
+      expect(generateDecayChartData(bad, 5)).toEqual([]);
+      expect(calculateSteadyStateBaseline(bad, 5)).toBeNull();
+      expect(calculateBaselineRampUp(bad, 5)).toEqual([]);
+    });
+
+    it('should return null for an all-zero-mg schedule (no baseline claims for decaf)', () => {
+      const decaf: Consumption[] = [{ id: '1', time: '09:00', mg: 0 }];
+      expect(calculateSteadyStateBaseline(decaf, 5)).toBeNull();
+      expect(calculateBaselineRampUp(decaf, 5)).toEqual([]);
+    });
+
+    it('should reject non-finite or non-positive half-lives', () => {
+      const cons: Consumption[] = [{ id: '1', time: '07:00', mg: 150 }];
+      expect(calculateSteadyStateBaseline(cons, NaN)).toBeNull();
+      expect(calculateSteadyStateBaseline(cons, 0)).toBeNull();
+      expect(calculateSteadyStateBaseline(cons, -5)).toBeNull();
+      expect(calculateBaselineRampUp(cons, NaN)).toEqual([]);
+      expect(generateDecayChartData(cons, NaN)).toEqual([]);
+      expect(calculateRemainingAtOffset([{ hourOffset: 0, mg: 150 }], 5, 0)).toBe(0);
+    });
+
+    it('should tolerate non-array consumption payloads from stale localStorage', () => {
+      const junk = null as unknown as Consumption[];
+      expect(calculateRemainingAtTime(junk, '22:00', 5)).toBe(0);
+      expect(calculateSafeSleepWindows(junk, 5)).toBeNull();
+      expect(generateDecayChartData(junk, 5)).toEqual([]);
+      expect(calculateSteadyStateBaseline(junk, 5)).toBeNull();
+    });
+
+    it('should render a label fallback instead of throwing on non-finite offsets', () => {
+      const origin = new Date(2026, 0, 5, 7, 0, 0, 0);
+      expect(formatHourOffsetLabel(origin, NaN)).toBe('');
+      expect(formatHourOffsetLabel(origin, Infinity)).toBe('');
+    });
+  });
+
+  describe('computeBedtimeOffsets', () => {
+    const origin = new Date(2026, 0, 5, 7, 0, 0, 0); // 07:00
+
+    it('should place one marker offset per simulated day', () => {
+      expect(computeBedtimeOffsets('22:00', origin, 3)).toEqual([15, 39, 63]);
+    });
+
+    it('should wrap bedtimes earlier than the origin to the next day', () => {
+      expect(computeBedtimeOffsets('06:00', origin, 2)).toEqual([23, 47]);
+    });
+
+    it('should return no markers for malformed bedtimes', () => {
+      expect(computeBedtimeOffsets('', origin, 3)).toEqual([]);
+      expect(computeBedtimeOffsets('22', origin, 3)).toEqual([]);
+    });
+  });
+
+  describe('computeChartTicks', () => {
+    it('should clock-align 1-day ticks to 4h wall-clock marks', () => {
+      // origin 07:00 → first wall-clock 4h mark is 8AM (offset 1), as on main
+      const origin = new Date(2026, 0, 5, 7, 0, 0, 0);
+      expect(computeChartTicks(origin, 1)).toEqual([1, 5, 9, 13, 17, 21]);
+    });
+
+    it('should keep clock-aligned origins on the grid', () => {
+      const origin = new Date(2026, 0, 5, 8, 0, 0, 0);
+      expect(computeChartTicks(origin, 1)).toEqual([0, 4, 8, 12, 16, 20, 24]);
+    });
+
+    it('should use cycle-anchored spacing for multi-day horizons', () => {
+      const origin = new Date(2026, 0, 5, 7, 0, 0, 0);
+      expect(computeChartTicks(origin, 3)).toEqual([0, 12, 24, 36, 48, 60, 72]);
+      expect(computeChartTicks(origin, 7)).toEqual([0, 24, 48, 72, 96, 120, 144, 168]);
     });
   });
 
