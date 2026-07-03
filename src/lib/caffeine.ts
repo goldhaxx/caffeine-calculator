@@ -251,6 +251,38 @@ export function calculateSteadyStateBaseline(
     return { troughMg, peakMg, daysToSteadyState };
 }
 
+export interface BaselineRampDay {
+    day: number;
+    troughMg: number;
+    percentOfSteadyState: number;
+}
+
+/**
+ * Day-over-day ramp of the pre-dose trough when today's intake repeats
+ * daily. Every dose's geometric series truncates identically after k days,
+ * so trough(k) = steady-state trough × (1 − f^k), f = 2^(−24/h).
+ */
+export function calculateBaselineRampUp(
+    consumptions: Consumption[],
+    halfLife: number,
+    days: number = 7
+): BaselineRampDay[] {
+    const steadyState = calculateSteadyStateBaseline(consumptions, halfLife);
+    if (!steadyState) return [];
+
+    const f = Math.pow(0.5, 24 / halfLife);
+
+    return Array.from({ length: days }, (_, index) => {
+        const day = index + 1;
+        const convergence = 1 - Math.pow(f, day);
+        return {
+            day,
+            troughMg: steadyState.troughMg * convergence,
+            percentOfSteadyState: convergence * 100,
+        };
+    });
+}
+
 export interface DecayChartPoint {
     timeStr: string;
     remaining: number;
