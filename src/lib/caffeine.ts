@@ -302,6 +302,45 @@ export function calculateSteadyStateBaseline(
     return { troughMg, peakMg, daysToSteadyState };
 }
 
+export interface SteadyStateMathSummary {
+    dailyIntakeMg: number;
+    doseCount: number;
+    retentionPct: number;     // % of a dose still circulating 24h later (2^(−24/h)·100)
+    eliminationPct: number;   // % cleared per 24h — metabolism-dependent
+    floorMg: number;          // steady-state trough
+    postDoseMg: number;       // steady-state peak (just after a dose)
+    daysToSteadyState: number;
+}
+
+/**
+ * Live ingredients for the in-UI math explainer: half-life decay is
+ * percentage-based (bathtub with an open drain), so a repeated daily intake
+ * climbs only until daily elimination equals daily intake — the steady state.
+ */
+export function summarizeSteadyStateMath(
+    consumptions: Consumption[],
+    halfLife: number
+): SteadyStateMathSummary | null {
+    const steadyState = calculateSteadyStateBaseline(consumptions, halfLife);
+    if (!steadyState) return null;
+
+    const validDoses = consumptions
+        .map((cons) => ({ hour: parseTimeToHours(cons.time), mg: cons.mg }))
+        .filter((dose) => dose.hour !== null);
+
+    const dailyRetention = Math.pow(0.5, 24 / halfLife);
+
+    return {
+        dailyIntakeMg: validDoses.reduce((sum, dose) => sum + dose.mg, 0),
+        doseCount: validDoses.length,
+        retentionPct: dailyRetention * 100,
+        eliminationPct: (1 - dailyRetention) * 100,
+        floorMg: steadyState.troughMg,
+        postDoseMg: steadyState.peakMg,
+        daysToSteadyState: steadyState.daysToSteadyState,
+    };
+}
+
 export interface BaselineRampDay {
     day: number;
     troughMg: number;
