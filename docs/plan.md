@@ -2,8 +2,8 @@
 
 > Feature: bts-711-multi-day-decay-baseline
 > Work: linear:BTS-711
-> Created: 1783038091
-> Spec hash: e11ae884
+> Created: 1783040801
+> Spec hash: 6dadb7c5
 > Based on: docs/spec.md
 
 ## Objective
@@ -85,3 +85,13 @@ Each step is one red-green-refactor cycle. Test command: `npm test` (vitest run)
 <!-- NODE-SPECIFIC-START -->
 <!-- Add project-specific content below this line. -->
 <!-- Hub content above is updated via /ccanvil-pull. -->
+
+## Post-Review Addendum (max-effort code review: 10 finder angles + verify + sweep)
+
+Applied on-branch: exact per-day ramp floors (the `(1−f^k)` law was wrong for
+multi-dose schedules — brute-force verified), malformed-input hardening
+(times, half-life, non-array localStorage payloads), cycle-based day labels,
+wall-clock-aligned 1-day ticks, `computeBedtimeOffsets`/`computeChartTicks`
+as tested lib helpers, memoized charts + shared chart theme, honest baseline
+copy, convention renames. Deferred to follow-up tickets: bedtime/safe-sleep
+kernel unification, DST-aware labels, page-level localStorage shape guards.
