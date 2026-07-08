@@ -1,6 +1,8 @@
 # Caffeine Calculator
 
-![Caffeine Calculator Hero Image](./public/hero.png) <!-- Update this path when you have a screenshot -->
+[![Live on Render](https://img.shields.io/badge/Live%20on-Render-46E3B7?logo=render&logoColor=white)](https://caffeine-calculator.onrender.com)
+
+![Caffeine Calculator Hero Image](./public/hero.png)
 
 Welcome to the **Caffeine Calculator**, a scientifically-backed tool designed to help you determine the caffeine content of your home-brewed cup of coffee! By factoring in the bean species, roast level, brew method, and coffee weight, this Next.js app provides an accurate and visually pleasing breakdown of what’s in your morning brew.
 
@@ -36,7 +38,7 @@ Make sure you have Node.js and npm (or yarn/pnpm/bun) installed.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/zacharywright/caffeine-calculator.git
+   git clone https://github.com/goldhaxx/caffeine-calculator.git
    ```
 
 2. **Navigate into the project directory:**

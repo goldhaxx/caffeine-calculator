@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "render-migration": false
+    }
+  }
+}
