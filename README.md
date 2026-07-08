@@ -1,5 +1,7 @@
 # Caffeine Calculator
 
+[![Live on Render](https://img.shields.io/badge/Live%20on-Render-46E3B7?logo=render&logoColor=white)](https://caffeine-calculator.onrender.com)
+
 ![Caffeine Calculator Hero Image](./public/hero.png)
 
 Welcome to the **Caffeine Calculator**, a scientifically-backed tool designed to help you determine the caffeine content of your home-brewed cup of coffee! By factoring in the bean species, roast level, brew method, and coffee weight, this Next.js app provides an accurate and visually pleasing breakdown of what’s in your morning brew.
